@@ -90,5 +90,37 @@ options2 = get_options(edited_df2)
 # Calculate Concentrations and Plot
 fig1 = calculate_concentrations_and_plot_with_plotly([options1, options2], threshold)
 
+fig1.update_layout(
+    height=600,
+    legend=dict(
+        orientation="h",
+        yanchor="bottom",
+        y=-0.4,
+        xanchor="center",
+        x=0.5
+    )
+)
+
 # Display Plot
-st.plotly_chart(fig1, theme="streamlit")
+st.plotly_chart(fig1, use_container_width=True, theme="streamlit")
+
+# Add CSS to make it nicer on mobile
+st.markdown("""
+<style>
+    .stApp {
+        max-width: 100% !important;
+        padding: 0;
+    }
+    .block-container {
+        padding: 1rem !important;
+    }
+    @media only screen and (max-width: 400px) {
+        .stApp {
+            padding: 0;
+        }
+        .block-container {
+            padding: 0.5rem;
+        }
+    }
+</style>
+""", unsafe_allow_html=True)
