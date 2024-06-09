@@ -92,8 +92,8 @@ col3, col4 = st.columns([0.7, 0.3])
 
 with col3:
     medication = st.radio(
-        "Elvanse, Medikinet, or ...?",
-        ["Elvanse"],
+        "Elvanse/Vyvanse, Medikinet, or ...?",
+        ["Elvanse/Vyvanse"],
         captions=["Lisdexamphetamindimesilat"],
     )
     st.markdown("More Medications coming soon")
