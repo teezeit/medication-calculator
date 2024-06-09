@@ -76,8 +76,9 @@ with tab2:
 
     with col1:
         st.markdown("### Option 1")
-        edited_df1 = st.data_editor(
-            df1, column_config=column_config, num_rows="dynamic", hide_index=True
+        edited_df11 = st.data_editor(
+            df1, column_config=column_config, num_rows="dynamic", hide_index=True,
+            key="compare_mode"
         )
 
     with col2:
@@ -85,7 +86,7 @@ with tab2:
         edited_df2 = st.data_editor(
             df2, column_config=column_config, num_rows="dynamic", hide_index=True
         )
-        compare_mode = st.checkbox("Mode: Compare", value=False, key="compare_mode")
+        compare_mode = st.checkbox("Mode: Compare", value=False)
 
 # Layout for Medication Selection and Threshold Slider
 col3, col4 = st.columns([0.7, 0.3])
@@ -112,11 +113,14 @@ def get_options(df):
 
 
 # Get Options from Edited DataFrames
-options1 = get_options(edited_df1)
-options2 = get_options(edited_df2)
-plot_options = [options1]
 if compare_mode:
-    plot_options.append(options2)
+    options1 = get_options(edited_df11)
+    options2 = get_options(edited_df2)  
+    plot_options = [options1, options2]
+else:
+    options1 = get_options(edited_df1)
+    plot_options = [options1]
+
 
 # Calculate Concentrations and Plot
 fig1 = calculate_concentrations_and_plot_with_plotly(plot_options, threshold)
