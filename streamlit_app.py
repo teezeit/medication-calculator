@@ -1,30 +1,30 @@
 import numpy as np
 import pandas as pd
 import streamlit as st
-from datetime import time, datetime
+from datetime import time
 from fit import calculate_concentrations_and_plot_with_plotly
-import streamlit.components.v1 as components
 from streamlit_javascript import st_javascript
 
 
 window_width = st_javascript("""window.innerWidth;""")
 st.session_state.is_mobile = True if window_width < 600 else False
-st.session_state.current_hour = datetime.now().hour
+st.session_state.current_hour = st_javascript("""new Date().getHours();""", key="hour-home")
+
 
 # Application Title
 st.title("Medication Buddy")
+with st.expander("Hide", expanded=True):
+    # Introduction Text
+    st.markdown(
+        """
+    So you really have something important at 4pm?
+    When should you take your medication? 
+    Should it be one 70mg or two 30mg?
 
-# Introduction Text
-st.markdown(
+    Try it out!
+    ## When did you take your medication and how much?
     """
-So you really have something important at 4pm?
-When should you take your medication? 
-Should it be one 70mg or two 30mg?
-
-Try it out!
-## When did you take your medication and how much?
-"""
-)
+    )
 
 tab1, tab2 = st.tabs(["My Medication", "Compare"])
 
@@ -88,21 +88,22 @@ with tab2:
         )
         compare_mode = st.checkbox("Mode: Compare", value=False)
 
-# Layout for Medication Selection and Threshold Slider
-col3, col4 = st.columns([0.7, 0.3])
+with st.expander("Settings", expanded=False):
+    # Layout for Medication Selection and Threshold Slider
+    col3, col4 = st.columns([0.7, 0.3])
 
-with col3:
-    medication = st.radio(
-        "Elvanse/Vyvanse, Medikinet, or ...?",
-        ["Elvanse/Vyvanse"],
-        captions=["Lisdexamphetamindimesilat"],
-    )
-    st.markdown("More Medications coming soon")
+    with col3:
+        medication = st.radio(
+            "Elvanse/Vyvanse, Medikinet, or ...?",
+            ["Elvanse/Vyvanse"],
+            captions=["Lisdexamphetamindimesilat"],
+        )
+        st.markdown("More Medications coming soon")
 
-with col4:
-    threshold = st.slider(
-        "Personal Threshold", min_value=0, max_value=200, value=20, step=10
-    )
+    with col4:
+        threshold = st.slider(
+            "Personal Threshold", min_value=0, max_value=200, value=20, step=10
+        )
 
 
 # Function to Extract Options from DataFrame

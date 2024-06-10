@@ -1,7 +1,7 @@
 import numpy as np
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-from datetime import datetime
+from streamlit_javascript import st_javascript
+
 
 # These were calculated from data
 PARAMS = (4.816931830999022, 0.23815199140828144, 0.7144975482181155)
@@ -43,13 +43,7 @@ def total_and_individual_concentration_over_time(dose_times, params):
 # Function to calculate concentrations and plot with Plotly
 def calculate_concentrations_and_plot_with_plotly(dose_time_options, threshold=30):
     # fig = make_subplots(rows=1, cols=1)
-    fig = fig = go.Figure(
-        # layout=dict(autosize=False,
-        #             width=2000,
-        # height=600,
-        # margin=dict(l=50, r=50, b=50, t=50, pad=4),
-        # )
-    )
+    fig = fig = go.Figure()
 
     for i, dose_times in enumerate(dose_time_options, 1):
         time_array, total_concentration, individual_concentrations = (
@@ -98,8 +92,8 @@ def calculate_concentrations_and_plot_with_plotly(dose_time_options, threshold=3
     time_array, total_concentration, individual_concentrations = (
         total_and_individual_concentration_over_time(dose_time_options[0], PARAMS)
     )
-    hour = datetime.now().hour
-    minutes = datetime.now().minute
+    hour = st_javascript("""new Date().getHours();""", key="hour-plot")
+    minutes = st_javascript("""new Date().getMinutes();""", key="minutes-plot")
     xtime = hour + (minutes / 60)
     delta = 0.25
     # get y coordinate of xtime using numpy:
