@@ -1,14 +1,15 @@
-import numpy as np
 import pandas as pd
 import streamlit as st
-from datetime import time
+from datetime import time, timedelta
 from fit import calculate_concentrations_and_plot_with_plotly
 from streamlit_javascript import st_javascript
 
 
 window_width = st_javascript("""window.innerWidth;""")
 st.session_state.is_mobile = True if window_width < 600 else False
-st.session_state.current_hour = st_javascript("""new Date().getHours();""", key="hour-home")
+st.session_state.current_hour = st_javascript(
+    """new Date().getHours();""", key="hour-home"
+)
 
 
 # Application Title
@@ -31,8 +32,8 @@ tab1, tab2 = st.tabs(["My Medication", "Compare"])
 # Define the DataFrames
 df1 = pd.DataFrame(
     [
-        {"time": time(7, 30), "dosis [mg]": 30},
-        {"time": time(13, 0), "dosis [mg]": 30},
+        {"time": time(7, 30), "dosis [mg]": 40},
+        {"time": time(12, 0), "dosis [mg]": 30},
     ]
 )
 
@@ -47,16 +48,17 @@ column_config = {
         "Time",
         help="Time when you took your medication",
         required=True,
-        min_value=time(0, 0),
-        max_value=time(23, 59),
+        # min_value=time(0, 0),
+        # max_value=time(23, 59),
         format="HH:mm",
+        step=timedelta(minutes=1),
     ),
     "dosis [mg]": st.column_config.NumberColumn(
         "Dosage [mg]",
         help="Dosage of your medication in milligrams",
         required=True,
         min_value=0,
-        max_value=200,
+        max_value=70,
         step=5,
         format="%d",
     ),
@@ -77,8 +79,11 @@ with tab2:
     with col1:
         st.markdown("### Option 1")
         edited_df11 = st.data_editor(
-            df1, column_config=column_config, num_rows="dynamic", hide_index=True,
-            key="compare_mode"
+            df1,
+            column_config=column_config,
+            num_rows="dynamic",
+            hide_index=True,
+            key="compare_mode",
         )
 
     with col2:
@@ -116,7 +121,7 @@ def get_options(df):
 # Get Options from Edited DataFrames
 if compare_mode:
     options1 = get_options(edited_df11)
-    options2 = get_options(edited_df2)  
+    options2 = get_options(edited_df2)
     plot_options = [options1, options2]
 else:
     options1 = get_options(edited_df1)
