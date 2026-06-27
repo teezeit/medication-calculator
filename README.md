@@ -13,3 +13,6 @@ pip install -r requirements
 ```
 streamlit run streamlit_app.py --server.enableCORS false --server.enableXsrfProtection false
 ```
+
+# updated parameters research
+/Users/tobiashoelzer/Library/CloudStorage/GoogleDrive-tobias.hoelzer@gmail.com/My Drive/resources/wiki/topics/adhd-medications/output/fix-medication-calculator-model.md

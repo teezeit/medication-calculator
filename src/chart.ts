@@ -3,18 +3,34 @@ import type { ConcentrationResult } from './model'
 
 export interface ChartOptions {
   threshold: number
-  currentTime: number // decimal hours, e.g. 14.5
-  isMobile: boolean
+  currentTime: number
 }
 
 export function buildFigure(
   results: ConcentrationResult[],
   options: ChartOptions,
 ): { data: Data[]; layout: Partial<Layout> } {
-  const { threshold, currentTime, isMobile } = options
+  const { threshold, currentTime } = options
   const data: Data[] = []
   const shapes: Partial<Layout>['shapes'] = []
+  const annotations: Partial<Layout>['annotations'] = []
   const multiSchedule = results.length > 1
+
+  const maxConc = Math.max(...results.flatMap(r => r.total))
+  const yMax = Math.ceil(Math.max(maxConc, threshold) * 1.25 / 10) * 10
+
+  // Therapeutic band as traces (shapes are all draggable with edits.shapePosition)
+  data.push({
+    x: [5, 24], y: [threshold, threshold],
+    mode: 'lines', line: { width: 0 },
+    hoverinfo: 'skip', showlegend: false,
+  } as Data)
+  data.push({
+    x: [5, 24], y: [yMax, yMax],
+    mode: 'lines', line: { width: 0 },
+    fill: 'tonexty', fillcolor: 'rgba(22,163,74,0.07)',
+    hoverinfo: 'skip', showlegend: false,
+  } as Data)
 
   for (let i = 0; i < results.length; i++) {
     const { timeArray, total, individual } = results[i]
@@ -25,8 +41,9 @@ export function buildFigure(
         y: conc,
         mode: 'lines',
         name: 'dose',
-        line: { dash: 'dot', color: 'darkgrey' },
+        line: { color: 'rgba(180,180,180,0.5)', width: 1.5 },
         showlegend: false,
+        hoverinfo: 'skip',
       } as Data)
     }
 
@@ -38,81 +55,62 @@ export function buildFigure(
       y: total,
       mode: 'lines',
       name: totalName,
-      line: { width: 2 },
+      line: { width: 2.5, color: '#374151' },
+      hoverinfo: 'none',
     } as Data)
   }
 
-  // Threshold horizontal line
+  // "Now" dot on the first schedule's total curve
+  const { timeArray: t0, total: total0 } = results[0]
+  const nowIdx = t0.findIndex(t => t >= currentTime)
+  const nowY = nowIdx >= 0 ? total0[nowIdx] : 0
+  data.push({
+    x: [currentTime],
+    y: [nowY],
+    mode: 'markers',
+    marker: { size: 8, color: '#3b82f6', line: { width: 0 } },
+    hoverinfo: 'skip',
+    showlegend: false,
+  } as Data)
+
+  // shapes[0]: threshold line — draggable via edits.shapePosition
   shapes.push({
     type: 'line',
     xref: 'paper',
     yref: 'y',
     x0: 0, x1: 1,
     y0: threshold, y1: threshold,
-    line: { color: 'black', width: 2 },
+    line: { color: 'rgba(22,163,74,0.6)', width: 2 },
   } as Partial<Layout>['shapes'][0])
 
-  // "you are here" vrect
-  const delta = 0.25
-  shapes.push({
-    type: 'rect',
-    xref: 'x',
-    yref: 'paper',
-    x0: currentTime - delta, x1: currentTime + delta,
-    y0: 0, y1: 1,
-    fillcolor: 'green',
-    opacity: 0.25,
-    line: { width: 0 },
-  } as Partial<Layout>['shapes'][0])
 
-  // "you are here" dot — uses first schedule's total
-  const { timeArray: t0, total: total0 } = results[0]
-  const idx = t0.findIndex(t => t >= currentTime)
-  const ytime = idx >= 0 ? total0[idx] : 0
-
-  data.push({
-    x: [currentTime],
-    y: [ytime],
-    mode: 'markers',
-    marker: {
-      size: 12,
-      color: 'rgba(191,223,191,0.5)',
-      line: { width: 2, color: 'DarkSlateGrey' },
-    },
-    name: 'you are here',
-  } as Data)
-
-  const xAxis = isMobile
-    ? {
-        range: [currentTime - 2.2, currentTime + 2.2],
-        rangeslider: { visible: true },
-        type: 'linear' as const,
-        dtick: 1,
-        showgrid: true,
-        title: { text: 'Hour of the Day' },
-      }
-    : {
-        range: [5, 24],
-        dtick: 1,
-        showgrid: true,
-        type: 'linear' as const,
-        title: { text: 'Hour of the Day' },
-      }
-
-  const legend = isMobile
-    ? { orientation: 'h' as const, yanchor: 'bottom' as const, y: -1.9, xanchor: 'center' as const, x: 0.5 }
-    : { orientation: 'h' as const, yanchor: 'bottom' as const, y: -0.9, xanchor: 'center' as const, x: 0.5 }
 
   const layout: Partial<Layout> = {
-    title: { text: 'Medication Concentration Over Time' },
-    xaxis: xAxis,
-    yaxis: { title: { text: 'Concentration (ng/mL)' } },
-    dragmode: 'pan',
+    xaxis: {
+      range: [5, 24],
+      tickvals: [6, 9, 12, 15, 18, 21],
+      ticktext: ['6am', '9am', '12pm', '3pm', '6pm', '9pm'],
+      showgrid: false,
+      zeroline: false,
+      tickfont: { size: 11, color: '#9ca3af' },
+      showspikes: false,
+    },
+    yaxis: {
+      showgrid: true,
+      gridcolor: 'rgba(243,244,246,1)',
+      zeroline: false,
+      tickfont: { size: 11, color: '#9ca3af' },
+      range: [0, yMax],
+    },
+    dragmode: false,
     plot_bgcolor: 'white',
     paper_bgcolor: 'white',
     autosize: true,
-    legend,
+    margin: { l: 32, r: 12, t: 8, b: 32 },
+    showlegend: false,
+    hovermode: 'x',
     shapes,
+    annotations,
   }
 
   return { data, layout }
