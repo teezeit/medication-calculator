@@ -206,7 +206,7 @@ export default function App() {
   return (
     <div className="max-w-xl mx-auto px-4 py-6">
       <h1 className="text-2xl font-semibold tracking-tight mb-1">
-        Medication Buddy
+        ADHD Medication Buddy
       </h1>
       <p className="text-gray-400 text-sm mb-6">
         Figure out when and how much to take.
