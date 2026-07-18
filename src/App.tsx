@@ -744,7 +744,7 @@ export default function App() {
             Want the technical details first - the tolerance math, the circadian dip, and why the three medications
             needed different treatment?{" "}
             <a
-              href="https://tobiashoelzer.com/pages/writing/2025_07_18-medication_modelling_part2/"
+              href="https://teezeit.github.io/pages/writing/2025_07_18-medication_modelling_part2/"
               target="_blank"
               rel="noreferrer"
               className="text-blue-500 hover:text-blue-600 font-medium"
