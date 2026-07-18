@@ -483,6 +483,19 @@ export default function App() {
 
       {showSettings && (
         <div className="mb-4 px-1 -mt-1 space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold text-gray-600">Settings</p>
+            <button
+              onClick={() => {
+                setOnsetMinutes(DEFAULT_ONSET_MINUTES);
+                setToleranceLevels({ elvanse: 50, medikinet: 50, concerta: 50 });
+                setEffectStrengths({ elvanse: 50, medikinet: 50, concerta: 50 });
+              }}
+              className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              Reset to defaults
+            </button>
+          </div>
           {SELECTABLE_MEDICATIONS.map((medication) => (
             <div key={medication}>
               <p className="text-xs font-semibold text-gray-600 mb-2">{MEDICATION_LABELS[medication]}</p>
