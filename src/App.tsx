@@ -5,7 +5,7 @@ import type { Dose, MedicationId } from "./model";
 import { buildFigure } from "./chart";
 import { parseTime, decimalHourToHHMM, concAtTime } from "./utils";
 
-type DoseRow = { medication: MedicationId; time: string; mg: number };
+type DoseRow = { medication: MedicationId; time: string; mg: number; alarm?: boolean };
 
 const MEDICATION_LABELS: Record<MedicationId, string> = {
   elvanse: "Elvanse",
@@ -205,8 +205,16 @@ function DoseTable({
   rows: DoseRow[];
   onChange: (rows: DoseRow[]) => void;
 }) {
-  const update = (i: number, field: keyof DoseRow, value: string | number) =>
+  const update = (i: number, field: keyof DoseRow, value: string | number | boolean) =>
     onChange(rows.map((r, idx) => (idx === i ? { ...r, [field]: value } : r)));
+
+  const toggleAlarm = (i: number, row: DoseRow) => {
+    const next = !row.alarm;
+    if (next && "Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+    update(i, "alarm", next);
+  };
 
   return (
     <div className="w-full">
@@ -226,8 +234,24 @@ function DoseTable({
                 ))}
               </select>
               <button
+                onClick={() => toggleAlarm(i, row)}
+                className={`w-8 h-8 flex-shrink-0 flex items-center justify-center transition-colors rounded-lg ml-auto ${
+                  row.alarm ? "text-blue-500" : "text-gray-300 hover:text-gray-400"
+                }`}
+                aria-label={row.alarm ? "Disable alarm" : "Enable alarm"}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill={row.alarm ? "currentColor" : "none"}>
+                  <path
+                    d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+              <button
                 onClick={() => onChange(rows.filter((_, idx) => idx !== i))}
-                className="w-8 h-8 flex-shrink-0 flex items-center justify-center text-gray-300 hover:text-red-400 transition-colors rounded-lg ml-auto"
+                className="w-8 h-8 flex-shrink-0 flex items-center justify-center text-gray-300 hover:text-red-400 transition-colors rounded-lg"
                 aria-label="Remove dose"
               >
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
@@ -318,7 +342,7 @@ function DoseTable({
 
 export default function App() {
   const saved = loadState();
-  const [activeTab, setActiveTab] = useState<"single" | "compare">(saved?.activeTab ?? "single");
+  const [activeTab, setActiveTab] = useState<"single" | "compare" | "help">(saved?.activeTab ?? "single");
   const [doses1, setDoses1] = useState<DoseRow[]>(saved?.doses1 ?? DEFAULT_DOSES_1);
   const [doses2, setDoses2] = useState<DoseRow[]>(saved?.doses2 ?? DEFAULT_DOSES_2);
   const [threshold, setThreshold] = useState<number>(saved?.threshold ?? 20);
@@ -364,6 +388,35 @@ export default function App() {
     const id = setInterval(() => setTick(t => t + 1), 60_000);
     return () => clearInterval(id);
   }, []);
+
+  // Schedules a one-shot Notification for each alarm-enabled dose still ahead today. Relies on
+  // the tab staying open (no service worker) - closing or reloading the tab drops any pending
+  // alarms, and one that already fired today won't re-fire until tomorrow's mount.
+  useEffect(() => {
+    if (!("Notification" in window)) return;
+
+    const rows = activeTab === "compare" ? [...doses1, ...doses2] : doses1;
+    const now = Date.now();
+    const timers = rows
+      .filter((r) => r.alarm && r.time)
+      .map((r) => {
+        const [h, m] = r.time.split(":").map((n) => parseInt(n) || 0);
+        const fireAt = new Date();
+        fireAt.setHours(h, m, 0, 0);
+        const delay = fireAt.getTime() - now;
+        if (delay <= 0) return null;
+        return window.setTimeout(() => {
+          if (Notification.permission === "granted") {
+            new Notification("Dose reminder", {
+              body: `${MEDICATION_LABELS[r.medication]} ${r.mg}mg at ${r.time}`,
+            });
+          }
+        }, delay);
+      })
+      .filter((id): id is number => id !== null);
+
+    return () => timers.forEach((id) => clearTimeout(id));
+  }, [doses1, doses2, activeTab]);
 
   useEffect(() => {
     if (!chartRef.current) return;
@@ -458,30 +511,91 @@ export default function App() {
               {tab === "single" ? "My Medication" : "Compare"}
             </button>
           ))}
+          <button
+            onClick={() => setActiveTab("help")}
+            className={`px-3 py-2.5 border-b-2 transition-colors -mb-px flex items-center justify-center ${
+              activeTab === "help"
+                ? "border-gray-900 text-gray-900"
+                : "border-transparent text-gray-400 hover:text-gray-600"
+            }`}
+            aria-label="Help"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.5" />
+              <path
+                d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.5v.4"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <circle cx="12" cy="17" r="0.9" fill="currentColor" />
+            </svg>
+          </button>
         </div>
-        <button
-          onClick={() => setShowSettings((s) => !s)}
-          className={`w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-lg transition-colors ${
-            showSettings ? "text-gray-700 bg-gray-100" : "text-gray-300 hover:text-gray-500"
-          }`}
-          aria-label="Settings"
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-            <path
-              d="M12 15a3 3 0 100-6 3 3 0 000 6z"
-              stroke="currentColor"
-              strokeWidth="1.5"
-            />
-            <path
-              d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"
-              stroke="currentColor"
-              strokeWidth="1.5"
-            />
-          </svg>
-        </button>
+        {activeTab !== "help" && (
+          <button
+            onClick={() => setShowSettings((s) => !s)}
+            className={`w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-lg transition-colors ${
+              showSettings ? "text-gray-700 bg-gray-100" : "text-gray-300 hover:text-gray-500"
+            }`}
+            aria-label="Settings"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <path
+                d="M12 15a3 3 0 100-6 3 3 0 000 6z"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              />
+              <path
+                d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              />
+            </svg>
+          </button>
+        )}
       </div>
 
-      {showSettings && (
+      {activeTab === "help" && (
+        <div className="px-1 space-y-4 text-sm text-gray-600">
+          <div>
+            <p className="font-semibold text-gray-800 mb-1">First-time setup</p>
+            <ol className="list-decimal list-inside space-y-2">
+              <li>Enter your real dose schedule (medication, time, mg) for a typical day.</li>
+              <li>
+                Set <span className="font-medium text-gray-800">Personal threshold</span> to roughly where you feel
+                "on" vs "off" - you'll refine this in a later step.
+              </li>
+              <li>
+                Leave <span className="font-medium text-gray-800">Onset</span>,{" "}
+                <span className="font-medium text-gray-800">Wearing-off strength</span>, and{" "}
+                <span className="font-medium text-gray-800">Personal effect strength</span> at their defaults for
+                the first pass.
+              </li>
+              <li>
+                Compare the chart to your actual day, then adjust one thing at a time:
+                <ul className="list-disc list-inside mt-1 ml-2 space-y-1 text-gray-500">
+                  <li>Above-threshold duration off &rarr; adjust <span className="text-gray-700">Personal threshold</span> first.</li>
+                  <li>Kicks in earlier/later than shown (Elvanse only) &rarr; adjust <span className="text-gray-700">Onset</span>.</li>
+                  <li>Feels like it fades before the dose should be done &rarr; raise that medication's <span className="text-gray-700">Wearing-off strength</span>.</li>
+                  <li>One medication hits stronger/weaker than another per mg &rarr; adjust its <span className="text-gray-700">Personal effect strength</span>.</li>
+                </ul>
+              </li>
+              <li>
+                Use <span className="font-medium text-gray-800">Reset to defaults</span> in Settings if you've
+                overtuned and want to start over.
+              </li>
+            </ol>
+          </div>
+          <p className="text-xs text-gray-400">
+            The number on the main screen is a comparison score, not a real blood concentration - it only becomes
+            useful once calibrated to match how you actually feel.
+          </p>
+        </div>
+      )}
+
+      {activeTab !== "help" && showSettings && (
         <div className="mb-4 px-1 -mt-1 space-y-4">
           <div className="flex items-center justify-between">
             <p className="text-xs font-semibold text-gray-600">Settings</p>
@@ -557,65 +671,68 @@ export default function App() {
         </div>
       )}
 
-
-      {/* Value display */}
-      <div className="mt-8 mb-1 text-center">
-        <p className="text-xs text-gray-400 mb-0.5 tabular-nums">
-          {!isHovering && "Now · "}
-          <span className={isHovering ? "text-gray-800" : "text-blue-500"}>{displayedTime}</span>
-        </p>
-        <div className="text-5xl font-bold tracking-tight tabular-nums">
-          {displayedConc.toFixed(0)}
-        </div>
-        <p className="text-sm text-gray-400">{concUnitLabel}</p>
-        <div
-          className={`mt-1.5 flex items-center justify-center gap-1.5 text-xs font-medium ${isAbove ? "text-green-600" : "text-red-500"}`}
-        >
-          <span
-            className={`w-1.5 h-1.5 rounded-full ${isAbove ? "bg-green-500" : "bg-red-400"}`}
-          />
-          {isAbove ? "Above threshold" : "Below threshold"}
-        </div>
-      </div>
-
-      {/* Chart */}
-      <div ref={chartRef} className="w-full mt-6" style={{ height: '240px' }} />
-
-      {/* Threshold stepper */}
-      <div className="flex items-center justify-between mt-3 px-1">
-        <span className="text-xs text-gray-400">Personal threshold</span>
-        <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
-          <button
-            onClick={() => setThreshold(t => Math.max(0, t - 5))}
-            className="w-11 h-9 flex items-center justify-center text-green-600 hover:bg-gray-50 active:bg-gray-100 transition-colors"
-            aria-label="Decrease threshold"
-          >
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-              <path d="M2 6h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-            </svg>
-          </button>
-          <div className="border-l border-r border-gray-200 h-9 flex items-center">
-            <input
-              type="number"
-              value={threshold}
-              min={0}
-              max={200}
-              onChange={(e) => setThreshold(Math.min(200, Math.max(0, parseInt(e.target.value) || 0)))}
-              className="w-14 text-sm font-medium text-green-600 tabular-nums text-center bg-transparent focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-              aria-label="Personal threshold"
-            />
+      {activeTab !== "help" && (
+        <>
+          {/* Value display */}
+          <div className="mt-8 mb-1 text-center">
+            <p className="text-xs text-gray-400 mb-0.5 tabular-nums">
+              {!isHovering && "Now · "}
+              <span className={isHovering ? "text-gray-800" : "text-blue-500"}>{displayedTime}</span>
+            </p>
+            <div className="text-5xl font-bold tracking-tight tabular-nums">
+              {displayedConc.toFixed(0)}
+            </div>
+            <p className="text-sm text-gray-400">{concUnitLabel}</p>
+            <div
+              className={`mt-1.5 flex items-center justify-center gap-1.5 text-xs font-medium ${isAbove ? "text-green-600" : "text-red-500"}`}
+            >
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${isAbove ? "bg-green-500" : "bg-red-400"}`}
+              />
+              {isAbove ? "Above threshold" : "Below threshold"}
+            </div>
           </div>
-          <button
-            onClick={() => setThreshold(t => Math.min(200, t + 5))}
-            className="w-11 h-9 flex items-center justify-center text-green-600 hover:bg-gray-50 active:bg-gray-100 transition-colors"
-            aria-label="Increase threshold"
-          >
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-              <path d="M6 2v8M2 6h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-            </svg>
-          </button>
-        </div>
-      </div>
+
+          {/* Chart */}
+          <div ref={chartRef} className="w-full mt-6" style={{ height: '240px' }} />
+
+          {/* Threshold stepper */}
+          <div className="flex items-center justify-between mt-3 px-1">
+            <span className="text-xs text-gray-400">Personal threshold</span>
+            <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
+              <button
+                onClick={() => setThreshold(t => Math.max(0, t - 5))}
+                className="w-11 h-9 flex items-center justify-center text-green-600 hover:bg-gray-50 active:bg-gray-100 transition-colors"
+                aria-label="Decrease threshold"
+              >
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                  <path d="M2 6h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                </svg>
+              </button>
+              <div className="border-l border-r border-gray-200 h-9 flex items-center">
+                <input
+                  type="number"
+                  value={threshold}
+                  min={0}
+                  max={200}
+                  onChange={(e) => setThreshold(Math.min(200, Math.max(0, parseInt(e.target.value) || 0)))}
+                  className="w-14 text-sm font-medium text-green-600 tabular-nums text-center bg-transparent focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  aria-label="Personal threshold"
+                />
+              </div>
+              <button
+                onClick={() => setThreshold(t => Math.min(200, t + 5))}
+                className="w-11 h-9 flex items-center justify-center text-green-600 hover:bg-gray-50 active:bg-gray-100 transition-colors"
+                aria-label="Increase threshold"
+              >
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                  <path d="M6 2v8M2 6h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
