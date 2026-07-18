@@ -117,6 +117,60 @@ function TimeInput({
   );
 }
 
+function SettingStepper({
+  label,
+  hint,
+  value,
+  unit,
+  step,
+  min,
+  max,
+  onChange,
+}: {
+  label: string;
+  hint: string;
+  value: number;
+  unit?: string;
+  step: number;
+  min: number;
+  max: number;
+  onChange: (updater: (v: number) => number) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between">
+      <div>
+        <span className="text-xs text-gray-400">{label}</span>
+        <p className="text-[11px] text-gray-300">{hint}</p>
+      </div>
+      <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
+        <button
+          onClick={() => onChange((v) => Math.max(min, v - step))}
+          className="w-9 h-9 flex items-center justify-center text-gray-500 hover:bg-gray-50 active:bg-gray-100 transition-colors"
+          aria-label={`Decrease ${label}`}
+        >
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path d="M2 6h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          </svg>
+        </button>
+        <div className="border-l border-r border-gray-200 px-3 h-9 flex items-center">
+          <span className="text-sm font-medium text-gray-700 tabular-nums">
+            {value}{unit ? ` ${unit}` : ""}
+          </span>
+        </div>
+        <button
+          onClick={() => onChange((v) => Math.min(max, v + step))}
+          className="w-9 h-9 flex items-center justify-center text-gray-500 hover:bg-gray-50 active:bg-gray-100 transition-colors"
+          aria-label={`Increase ${label}`}
+        >
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path d="M6 2v8M2 6h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function shiftHour(time: string, delta: number): string {
   const [h, m] = time.split(":").map((n) => parseInt(n) || 0);
   const newHour = ((h + delta) % 24 + 24) % 24;
@@ -250,8 +304,11 @@ export default function App() {
   const [onsetMinutes, setOnsetMinutes] = useState<number>(saved?.onsetMinutes ?? DEFAULT_ONSET_MINUTES);
   // Plain 0-100 scale, no "%" - a "tolerance %" reads as "how tolerant you are" (backwards).
   // 50 is the default/baseline wearing-off strength; internally scaled to the model's
-  // toleranceStrength multiplier (level/50, so 50 -> 1x).
-  const [toleranceLevel, setToleranceLevel] = useState<number>(saved?.toleranceLevel ?? 50);
+  // toleranceStrength multiplier (level/50, so 50 -> 1x). Separate per medication since they
+  // have different tolerance mechanisms (see toleranceRateFor in model.ts) and wear off at
+  // different rates for different people.
+  const [toleranceLevelElvanse, setToleranceLevelElvanse] = useState<number>(saved?.toleranceLevelElvanse ?? 50);
+  const [toleranceLevelMedikinet, setToleranceLevelMedikinet] = useState<number>(saved?.toleranceLevelMedikinet ?? 50);
   const [showSettings, setShowSettings] = useState(false);
   const [isMobile, setIsMobile] = useState(true);
 
@@ -271,8 +328,8 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    saveState({ activeTab, doses1, doses2, threshold, onsetMinutes, toleranceLevel });
-  }, [activeTab, doses1, doses2, threshold, onsetMinutes, toleranceLevel]);
+    saveState({ activeTab, doses1, doses2, threshold, onsetMinutes, toleranceLevelElvanse, toleranceLevelMedikinet });
+  }, [activeTab, doses1, doses2, threshold, onsetMinutes, toleranceLevelElvanse, toleranceLevelMedikinet]);
 
   const [tick, setTick] = useState(0);
   useEffect(() => {
@@ -295,7 +352,11 @@ export default function App() {
         ? [entries1, entries2]
         : [entries1];
 
-    const results = schedules.map((s) => computeSchedule(s, onsetMinutes, toleranceLevel / 50));
+    const toleranceStrengths = {
+      elvanse: toleranceLevelElvanse / 50,
+      medikinet: toleranceLevelMedikinet / 50,
+    };
+    const results = schedules.map((s) => computeSchedule(s, onsetMinutes, toleranceStrengths));
     const curConc = concAtTime(results[0], currentTime);
 
     currentConcRef.current = curConc;
@@ -333,7 +394,7 @@ export default function App() {
       setIsHovering(false);
     });
 
-  }, [doses1, doses2, threshold, onsetMinutes, toleranceLevel, isMobile, activeTab, tick]);
+  }, [doses1, doses2, threshold, onsetMinutes, toleranceLevelElvanse, toleranceLevelMedikinet, isMobile, activeTab, tick]);
 
   const isAbove = displayedConc >= threshold;
   // Both medications run through tolerance/circadian layers that modify effect, not plasma
@@ -392,66 +453,42 @@ export default function App() {
       {showSettings && (
         <div className="mb-4 px-1 -mt-1 space-y-4">
           <div>
-            <p className="text-xs font-semibold text-gray-600 mb-2">Settings</p>
-
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <span className="text-xs text-gray-400">{MEDICATION_LABELS.elvanse} onset</span>
-                <p className="text-[11px] text-gray-300">When you personally start feeling it</p>
-              </div>
-              <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
-                <button
-                  onClick={() => setOnsetMinutes((m) => Math.max(5, m - 5))}
-                  className="w-9 h-9 flex items-center justify-center text-gray-500 hover:bg-gray-50 active:bg-gray-100 transition-colors"
-                  aria-label="Decrease onset"
-                >
-                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                    <path d="M2 6h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                  </svg>
-                </button>
-                <div className="border-l border-r border-gray-200 px-3 h-9 flex items-center">
-                  <span className="text-sm font-medium text-gray-700 tabular-nums">{onsetMinutes} min</span>
-                </div>
-                <button
-                  onClick={() => setOnsetMinutes((m) => Math.min(180, m + 5))}
-                  className="w-9 h-9 flex items-center justify-center text-gray-500 hover:bg-gray-50 active:bg-gray-100 transition-colors"
-                  aria-label="Increase onset"
-                >
-                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                    <path d="M6 2v8M2 6h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                  </svg>
-                </button>
-              </div>
+            <p className="text-xs font-semibold text-gray-600 mb-2">{MEDICATION_LABELS.elvanse}</p>
+            <div className="space-y-3">
+              <SettingStepper
+                label="Onset"
+                hint="When you personally start feeling it"
+                value={onsetMinutes}
+                unit="min"
+                step={5}
+                min={5}
+                max={180}
+                onChange={setOnsetMinutes}
+              />
+              <SettingStepper
+                label="Wearing-off strength"
+                hint="How fast the effect fades through the day"
+                value={toleranceLevelElvanse}
+                step={10}
+                min={0}
+                max={100}
+                onChange={setToleranceLevelElvanse}
+              />
             </div>
+          </div>
 
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="text-xs text-gray-400">Wearing-off strength</span>
-                <p className="text-[11px] text-gray-300">How fast the effect fades through the day</p>
-              </div>
-              <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
-                <button
-                  onClick={() => setToleranceLevel((t) => Math.max(0, t - 10))}
-                  className="w-9 h-9 flex items-center justify-center text-gray-500 hover:bg-gray-50 active:bg-gray-100 transition-colors"
-                  aria-label="Decrease wearing-off strength"
-                >
-                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                    <path d="M2 6h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                  </svg>
-                </button>
-                <div className="border-l border-r border-gray-200 px-3 h-9 flex items-center">
-                  <span className="text-sm font-medium text-gray-700 tabular-nums">{toleranceLevel}</span>
-                </div>
-                <button
-                  onClick={() => setToleranceLevel((t) => Math.min(100, t + 10))}
-                  className="w-9 h-9 flex items-center justify-center text-gray-500 hover:bg-gray-50 active:bg-gray-100 transition-colors"
-                  aria-label="Increase wearing-off strength"
-                >
-                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                    <path d="M6 2v8M2 6h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                  </svg>
-                </button>
-              </div>
+          <div>
+            <p className="text-xs font-semibold text-gray-600 mb-2">{MEDICATION_LABELS.medikinet}</p>
+            <div className="space-y-3">
+              <SettingStepper
+                label="Wearing-off strength"
+                hint="How fast the effect fades through the day"
+                value={toleranceLevelMedikinet}
+                step={10}
+                min={0}
+                max={100}
+                onChange={setToleranceLevelMedikinet}
+              />
             </div>
           </div>
         </div>
@@ -513,8 +550,16 @@ export default function App() {
               <path d="M2 6h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
             </svg>
           </button>
-          <div className="border-l border-r border-gray-200 px-4 h-9 flex items-center">
-            <span className="text-sm font-medium text-green-600 tabular-nums">{threshold}</span>
+          <div className="border-l border-r border-gray-200 h-9 flex items-center">
+            <input
+              type="number"
+              value={threshold}
+              min={0}
+              max={200}
+              onChange={(e) => setThreshold(Math.min(200, Math.max(0, parseInt(e.target.value) || 0)))}
+              className="w-14 text-sm font-medium text-green-600 tabular-nums text-center bg-transparent focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              aria-label="Personal threshold"
+            />
           </div>
           <button
             onClick={() => setThreshold(t => Math.min(200, t + 5))}
