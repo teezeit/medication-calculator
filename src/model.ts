@@ -124,9 +124,10 @@ const CONCERTA_COMPONENTS: { fraction: number; ka: number; lagHours: number }[] 
   { fraction: 0.43, ka: 0.3, lagHours: 3.5 }, // OROS late layer - drives the ascending peak at 6-8h
 ]
 
-// Calibrated so the combined curve peaks at 3.7 ng/mL at 18mg (FDA label Cmax, the conservative
-// of the two label-derived CMAX_PER_MG estimates). No closed form for a 3-component sum's peak,
-// so the scale factor was found numerically against the unscaled shape above.
+// Target Cmax at 18mg (FDA label, the conservative of the two label-derived CMAX_PER_MG
+// estimates). No closed form for a 3-component sum's peak, so CONCERTA_SCALE was found
+// numerically against the unscaled shape above to hit this target.
+const CONCERTA_CMAX_PER_MG = 0.21
 const CONCERTA_SCALE = 0.5153
 
 function concertaConcentration(tSinceDose: number, doseMg: number): number {
@@ -139,24 +140,41 @@ function concertaConcentration(tSinceDose: number, doseMg: number): number {
   return shape * CONCERTA_SCALE * doseMg
 }
 
+// Cross-drug normalization: each medication's raw ng/mL Cmax scale is an artifact of its own
+// CMAX_PER_MG calibration (1.559 for Elvanse vs 0.32/0.21 for Medikinet/Concerta - a >5x gap
+// that reflects nothing about relative clinical potency). Dividing each drug's raw
+// concentration by its own CMAX_PER_MG before the PD layer cancels that calibration factor out,
+// leaving a dose-equivalent unit (roughly "mg-equivalent effect") that's comparable across
+// drugs - a 40mg dose of any of the three now produces a similarly-scaled peak. Without this,
+// the bounded 0-2x personal-effect-strength slider below could never bridge a 5x+ baseline gap.
+function cmaxPerMgFor(medication: MedicationId): number {
+  if (medication === 'elvanse') return ELVANSE_PK.Cmax
+  if (medication === 'medikinet') return MEDIKINET_IR_CMAX_PER_MG
+  return CONCERTA_CMAX_PER_MG
+}
+
 // Tolerance compartment (Mager 2014-style): dT/dt = K_TOL*C - K_DEG*T, effective = C/(1+T).
-// K_TOL is scaled per ng/mL (not per normalized concentration) since C is real plasma ng/mL.
-// Elvanse (amphetamine): at a sustained C=100 this settles to T=k_tol*C/k_deg=0.33, i.e.
-// effective=C/1.33, a ~25% steady-state suppression. Kept light deliberately: Cortese 2025's
-// ~67%-suppression-strength tachyphylaxis is documented for subjective euphoric effects in
-// healthy volunteers at research doses, not therapeutic ADHD cognitive effects - wearing-off
-// here should be driven mainly by PK decline + circadian dip, with tolerance as a minor
-// correction on top.
-// Medikinet and Concerta (both methylphenidate): lower k_tol - MPH blocks DAT reuptake rather
-// than forcing vesicular dopamine release, so it produces less tachyphylaxis than amphetamine
-// (see mph-vs-amphetamine-pkpd-differences.md). MPH's much lower Cmax (~4-12ng/mL vs ~110ng/mL
-// for Elvanse) means most of its wearing-off is genuine PK decline rather than tolerance
-// build-up. Concerta's ascending delivery was specifically engineered to counteract acute
-// tolerance (concerta-oros-mechanism-and-pk-model.md) but that's a PK-shape effect already
-// captured by concertaConcentration's rising curve - the underlying MPH tolerance rate itself
-// is shared with Medikinet, not separately tuned.
-const TOLERANCE_K_TOL_ELVANSE = 0.0005
-const TOLERANCE_K_TOL_MPH = 0.0007
+// C here is the CMAX-normalized concentration (see cmaxPerMgFor above), not raw ng/mL, so
+// K_TOL is also on the normalized scale: K_TOL_NORM = K_TOL_RAW * CMAX_PER_MG, which preserves
+// each drug's originally-tuned steady-state tolerance (T_ss = K_TOL*C/K_DEG) now that C's units
+// have changed.
+// Elvanse (amphetamine): raw K_TOL_RAW=0.0005/(ng/mL) at CMAX_PER_MG=1.559 -> K_TOL_NORM=0.00078.
+// At a sustained normalized C=64 (~100 ng/mL raw) this settles to T_ss=0.33, i.e. effective=C/1.33,
+// a ~25% steady-state suppression. Kept light deliberately: Cortese 2025's ~67%-suppression
+// tachyphylaxis is documented for subjective euphoric effects in healthy volunteers at research
+// doses, not therapeutic ADHD cognitive effects - wearing-off here should be driven mainly by
+// PK decline + circadian dip, with tolerance as a minor correction on top.
+// Medikinet and Concerta (both methylphenidate): lower raw K_TOL_RAW=0.0007/(ng/mL) - MPH blocks
+// DAT reuptake rather than forcing vesicular dopamine release, so it produces less tachyphylaxis
+// than amphetamine (see mph-vs-amphetamine-pkpd-differences.md). Converted to their own
+// normalized scales via each drug's own CMAX_PER_MG (0.32 / 0.21) rather than sharing one
+// constant, since normalization is per-drug. Concerta's ascending delivery was specifically
+// engineered to counteract acute tolerance (concerta-oros-mechanism-and-pk-model.md), but that's
+// a PK-shape effect already captured by concertaConcentration's rising curve - the underlying
+// MPH tolerance rate itself is the same mechanism as Medikinet, just renormalized.
+const TOLERANCE_K_TOL_ELVANSE = 0.0005 * ELVANSE_PK.Cmax
+const TOLERANCE_K_TOL_MEDIKINET = 0.0007 * MEDIKINET_IR_CMAX_PER_MG
+const TOLERANCE_K_TOL_CONCERTA = 0.0007 * CONCERTA_CMAX_PER_MG
 const TOLERANCE_K_DEG = 0.15
 export const DEFAULT_TOLERANCE_STRENGTH = 1
 
@@ -169,7 +187,9 @@ const CIRCADIAN_AMPLITUDE = 0.15
 const CIRCADIAN_TROUGH = 16.0
 
 function toleranceRateFor(medication: MedicationId): number {
-  return medication === 'elvanse' ? TOLERANCE_K_TOL_ELVANSE : TOLERANCE_K_TOL_MPH
+  if (medication === 'elvanse') return TOLERANCE_K_TOL_ELVANSE
+  if (medication === 'medikinet') return TOLERANCE_K_TOL_MEDIKINET
+  return TOLERANCE_K_TOL_CONCERTA
 }
 
 function applyToleranceAndCircadian(
@@ -229,11 +249,15 @@ export function computeSchedule(
     effectStrengths[medication] ?? DEFAULT_EFFECT_STRENGTH
 
   for (const dose of doses) {
-    const conc = dose.medication === 'elvanse'
+    const rawConc = dose.medication === 'elvanse'
       ? timeArray.map(t => elvanseBiExponential(t - dose.time, dose.mg, onsetHours))
       : dose.medication === 'medikinet'
       ? timeArray.map(t => medikinetConcentration(t - dose.time, dose.mg))
       : timeArray.map(t => concertaConcentration(t - dose.time, dose.mg))
+    // Normalize to dose-equivalent units (see cmaxPerMgFor) before the PD layer, so tolerance/
+    // circadian/personal-effect-strength operate on a cross-drug-comparable scale.
+    const cmaxPerMg = cmaxPerMgFor(dose.medication)
+    const conc = rawConc.map(v => v / cmaxPerMg)
 
     // Individual line shows this dose's own effective curve (tolerance/circadian applied
     // standalone) rather than raw plasma - matches what the combined total actually plots.

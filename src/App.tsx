@@ -410,10 +410,10 @@ export default function App() {
   }, [doses1, doses2, threshold, onsetMinutes, toleranceLevels, effectStrengths, isMobile, activeTab, tick]);
 
   const isAbove = displayedConc >= threshold;
-  // Both medications run through tolerance/circadian layers that modify effect, not plasma
-  // level, so the "total" isn't a real ng/mL reading - label it for what it is rather than
-  // implying a lab value.
-  const concUnitLabel = "concentration";
+  // Each medication's raw ng/mL is normalized by its own CMAX_PER_MG before the PD layer (see
+  // cmaxPerMgFor in model.ts) so different drugs are comparable - the number is a dose-
+  // equivalent effect score, not a real ng/mL reading, so label it as such.
+  const concUnitLabel = "effect";
 
   return (
     <div className="max-w-xl mx-auto px-4 py-6">
