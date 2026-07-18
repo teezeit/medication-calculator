@@ -241,7 +241,7 @@ const MEDICATION_ELI5: Record<MedicationId, { title: string; explanation: string
   concerta: {
     title: "Why Concerta climbs steadily instead of peaking",
     explanation:
-      "It's a tiny osmotic pump: water seeps in through the shell, and pushes the medication out through a laser-drilled hole at the other end - at a rate that's engineered to speed up over the day. There's no single moment where it \"peaks and drops\" like a normal pill - it just climbs steadily for hours, then tapers off once the pump runs dry.",
+      "The outer coating (about 22% of the dose) dissolves immediately, giving a small early bump. Underneath is a tiny osmotic pump: water seeps in through the shell and pushes the rest of the medication out through a laser-drilled hole - at a rate engineered to speed up over the day. There's no single moment where it \"peaks and drops\" like a normal pill - after that early bump it just climbs steadily for hours, then tapers off once the pump runs dry.",
   },
 };
 
