@@ -367,7 +367,11 @@ export default function App() {
         ? [entries1, entries2]
         : [entries1];
 
-    const toleranceMultipliers = mapValues(toleranceLevels, (v) => v / 50);
+    // Squared rather than linear: keeps level 50 = 1x (the literature-sourced baseline) exactly,
+    // but pushes the ceiling at level 100 from 2x to 4x - real tachyphylaxis varies enough
+    // person to person that a hard 2x cap left little room to dial in a stronger personal
+    // wearing-off curve.
+    const toleranceMultipliers = mapValues(toleranceLevels, (v) => (v / 50) ** 2);
     const effectMultipliers = mapValues(effectStrengths, (v) => v / 50);
     const results = schedules.map((s) => computeSchedule(s, onsetMinutes, toleranceMultipliers, effectMultipliers));
     const curConc = concAtTime(results[0], currentTime);
