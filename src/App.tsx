@@ -21,6 +21,7 @@ const DEFAULT_DOSES_1: DoseRow[] = [
 ];
 const DEFAULT_DOSES_2: DoseRow[] = [
   { medication: "elvanse", time: "07:30", mg: 70 },
+  { medication: "medikinet", time: "14:00", mg: 20 },
 ];
 
 const STORAGE_KEY = "medbuddy_v1";
