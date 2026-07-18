@@ -12,12 +12,7 @@ const MEDICATION_LABELS: Record<MedicationId, string> = {
   medikinet: "Medikinet",
 };
 
-// Medikinet isn't selectable yet - it's a placeholder in the model pending its own PK model
-// (see the MedicationId comment in model.ts). Uncomment once that lands.
-const SELECTABLE_MEDICATIONS: MedicationId[] = [
-  "elvanse",
-  // "medikinet",
-];
+const SELECTABLE_MEDICATIONS: MedicationId[] = ["elvanse", "medikinet"];
 
 const DEFAULT_DOSES_1: DoseRow[] = [
   { medication: "elvanse", time: "07:30", mg: 40 },
@@ -341,10 +336,10 @@ export default function App() {
   }, [doses1, doses2, threshold, onsetMinutes, toleranceLevel, isMobile, activeTab, tick]);
 
   const isAbove = displayedConc >= threshold;
-  // Elvanse's tolerance/circadian layers modify effect, not plasma level, so its "total" isn't
-  // a real ng/mL reading anymore - label it for what it is rather than implying a lab value.
-  const primaryHasElvanse = doses1.some((r) => r.medication === "elvanse");
-  const concUnitLabel = primaryHasElvanse ? "effective conc." : "ng/mL";
+  // Both medications run through tolerance/circadian layers that modify effect, not plasma
+  // level, so the "total" isn't a real ng/mL reading - label it for what it is rather than
+  // implying a lab value.
+  const concUnitLabel = "effective conc.";
 
   return (
     <div className="max-w-xl mx-auto px-4 py-6">
@@ -397,11 +392,11 @@ export default function App() {
       {showSettings && (
         <div className="mb-4 px-1 -mt-1 space-y-4">
           <div>
-            <p className="text-xs font-semibold text-gray-600 mb-2">{MEDICATION_LABELS.elvanse}</p>
+            <p className="text-xs font-semibold text-gray-600 mb-2">Settings</p>
 
             <div className="flex items-center justify-between mb-3">
               <div>
-                <span className="text-xs text-gray-400">Onset</span>
+                <span className="text-xs text-gray-400">{MEDICATION_LABELS.elvanse} onset</span>
                 <p className="text-[11px] text-gray-300">When you personally start feeling it</p>
               </div>
               <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
