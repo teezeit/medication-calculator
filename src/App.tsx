@@ -10,9 +10,10 @@ type DoseRow = { medication: MedicationId; time: string; mg: number };
 const MEDICATION_LABELS: Record<MedicationId, string> = {
   elvanse: "Elvanse",
   medikinet: "Medikinet",
+  concerta: "Concerta",
 };
 
-const SELECTABLE_MEDICATIONS: MedicationId[] = ["elvanse", "medikinet"];
+const SELECTABLE_MEDICATIONS: MedicationId[] = ["elvanse", "medikinet", "concerta"];
 
 const DEFAULT_DOSES_1: DoseRow[] = [
   { medication: "elvanse", time: "07:30", mg: 40 },
@@ -40,6 +41,12 @@ function saveState(state: object) {
   } catch {
     // storage full or unavailable — silently skip
   }
+}
+
+function mapValues(record: Record<MedicationId, number>, fn: (v: number) => number): Record<MedicationId, number> {
+  return Object.fromEntries(
+    Object.entries(record).map(([k, v]) => [k, fn(v)]),
+  ) as Record<MedicationId, number>;
 }
 
 function rowsToDoses(rows: DoseRow[]): Dose[] {
@@ -304,16 +311,18 @@ export default function App() {
   const [onsetMinutes, setOnsetMinutes] = useState<number>(saved?.onsetMinutes ?? DEFAULT_ONSET_MINUTES);
   // Plain 0-100 scale, no "%" - a "tolerance %" reads as "how tolerant you are" (backwards).
   // 50 is the default/baseline wearing-off strength; internally scaled to the model's
-  // toleranceStrength multiplier (level/50, so 50 -> 1x). Separate per medication since they
-  // have different tolerance mechanisms (see toleranceRateFor in model.ts) and wear off at
+  // toleranceStrength multiplier (level/50, so 50 -> 1x). Per medication since they have
+  // different tolerance mechanisms (see toleranceRateFor in model.ts) and wear off at
   // different rates for different people.
-  const [toleranceLevelElvanse, setToleranceLevelElvanse] = useState<number>(saved?.toleranceLevelElvanse ?? 50);
-  const [toleranceLevelMedikinet, setToleranceLevelMedikinet] = useState<number>(saved?.toleranceLevelMedikinet ?? 50);
+  const [toleranceLevels, setToleranceLevels] = useState<Record<MedicationId, number>>(
+    saved?.toleranceLevels ?? { elvanse: 50, medikinet: 50, concerta: 50 },
+  );
   // Same plain 0-100 scale as wearing-off strength (50 -> 1x). Captures personal sensitivity -
   // some people feel a given medication more strongly than another at an equivalent dose (e.g.
   // MPH exposure varies enormously by CES1 genotype), independent of how fast it wears off.
-  const [effectStrengthElvanse, setEffectStrengthElvanse] = useState<number>(saved?.effectStrengthElvanse ?? 50);
-  const [effectStrengthMedikinet, setEffectStrengthMedikinet] = useState<number>(saved?.effectStrengthMedikinet ?? 50);
+  const [effectStrengths, setEffectStrengths] = useState<Record<MedicationId, number>>(
+    saved?.effectStrengths ?? { elvanse: 50, medikinet: 50, concerta: 50 },
+  );
   const [showSettings, setShowSettings] = useState(false);
   const [isMobile, setIsMobile] = useState(true);
 
@@ -333,16 +342,8 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    saveState({
-      activeTab, doses1, doses2, threshold, onsetMinutes,
-      toleranceLevelElvanse, toleranceLevelMedikinet,
-      effectStrengthElvanse, effectStrengthMedikinet,
-    });
-  }, [
-    activeTab, doses1, doses2, threshold, onsetMinutes,
-    toleranceLevelElvanse, toleranceLevelMedikinet,
-    effectStrengthElvanse, effectStrengthMedikinet,
-  ]);
+    saveState({ activeTab, doses1, doses2, threshold, onsetMinutes, toleranceLevels, effectStrengths });
+  }, [activeTab, doses1, doses2, threshold, onsetMinutes, toleranceLevels, effectStrengths]);
 
   const [tick, setTick] = useState(0);
   useEffect(() => {
@@ -365,15 +366,9 @@ export default function App() {
         ? [entries1, entries2]
         : [entries1];
 
-    const toleranceStrengths = {
-      elvanse: toleranceLevelElvanse / 50,
-      medikinet: toleranceLevelMedikinet / 50,
-    };
-    const effectStrengths = {
-      elvanse: effectStrengthElvanse / 50,
-      medikinet: effectStrengthMedikinet / 50,
-    };
-    const results = schedules.map((s) => computeSchedule(s, onsetMinutes, toleranceStrengths, effectStrengths));
+    const toleranceMultipliers = mapValues(toleranceLevels, (v) => v / 50);
+    const effectMultipliers = mapValues(effectStrengths, (v) => v / 50);
+    const results = schedules.map((s) => computeSchedule(s, onsetMinutes, toleranceMultipliers, effectMultipliers));
     const curConc = concAtTime(results[0], currentTime);
 
     currentConcRef.current = curConc;
@@ -411,12 +406,7 @@ export default function App() {
       setIsHovering(false);
     });
 
-  }, [
-    doses1, doses2, threshold, onsetMinutes,
-    toleranceLevelElvanse, toleranceLevelMedikinet,
-    effectStrengthElvanse, effectStrengthMedikinet,
-    isMobile, activeTab, tick,
-  ]);
+  }, [doses1, doses2, threshold, onsetMinutes, toleranceLevels, effectStrengths, isMobile, activeTab, tick]);
 
   const isAbove = displayedConc >= threshold;
   // Both medications run through tolerance/circadian layers that modify effect, not plasma
@@ -474,63 +464,47 @@ export default function App() {
 
       {showSettings && (
         <div className="mb-4 px-1 -mt-1 space-y-4">
-          <div>
-            <p className="text-xs font-semibold text-gray-600 mb-2">{MEDICATION_LABELS.elvanse}</p>
-            <div className="space-y-3">
-              <SettingStepper
-                label="Onset"
-                hint="When you personally start feeling it"
-                value={onsetMinutes}
-                unit="min"
-                step={5}
-                min={5}
-                max={180}
-                onChange={setOnsetMinutes}
-              />
-              <SettingStepper
-                label="Wearing-off strength"
-                hint="How fast the effect fades through the day"
-                value={toleranceLevelElvanse}
-                step={10}
-                min={0}
-                max={100}
-                onChange={setToleranceLevelElvanse}
-              />
-              <SettingStepper
-                label="Personal effect strength"
-                hint="How strongly you respond to it"
-                value={effectStrengthElvanse}
-                step={10}
-                min={0}
-                max={100}
-                onChange={setEffectStrengthElvanse}
-              />
+          {SELECTABLE_MEDICATIONS.map((medication) => (
+            <div key={medication}>
+              <p className="text-xs font-semibold text-gray-600 mb-2">{MEDICATION_LABELS[medication]}</p>
+              <div className="space-y-3">
+                {medication === "elvanse" && (
+                  <SettingStepper
+                    label="Onset"
+                    hint="When you personally start feeling it"
+                    value={onsetMinutes}
+                    unit="min"
+                    step={5}
+                    min={5}
+                    max={180}
+                    onChange={setOnsetMinutes}
+                  />
+                )}
+                <SettingStepper
+                  label="Wearing-off strength"
+                  hint="How fast the effect fades through the day"
+                  value={toleranceLevels[medication]}
+                  step={10}
+                  min={0}
+                  max={100}
+                  onChange={(updater) =>
+                    setToleranceLevels((levels) => ({ ...levels, [medication]: updater(levels[medication]) }))
+                  }
+                />
+                <SettingStepper
+                  label="Personal effect strength"
+                  hint="How strongly you respond to it"
+                  value={effectStrengths[medication]}
+                  step={10}
+                  min={0}
+                  max={100}
+                  onChange={(updater) =>
+                    setEffectStrengths((strengths) => ({ ...strengths, [medication]: updater(strengths[medication]) }))
+                  }
+                />
+              </div>
             </div>
-          </div>
-
-          <div>
-            <p className="text-xs font-semibold text-gray-600 mb-2">{MEDICATION_LABELS.medikinet}</p>
-            <div className="space-y-3">
-              <SettingStepper
-                label="Wearing-off strength"
-                hint="How fast the effect fades through the day"
-                value={toleranceLevelMedikinet}
-                step={10}
-                min={0}
-                max={100}
-                onChange={setToleranceLevelMedikinet}
-              />
-              <SettingStepper
-                label="Personal effect strength"
-                hint="How strongly you respond to it"
-                value={effectStrengthMedikinet}
-                step={10}
-                min={0}
-                max={100}
-                onChange={setEffectStrengthMedikinet}
-              />
-            </div>
-          </div>
+          ))}
         </div>
       )}
 

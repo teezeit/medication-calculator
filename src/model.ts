@@ -39,7 +39,7 @@ export function computeConcentrations(doseTimes: DoseEntry[]): ConcentrationResu
 // PK source: Bogen et al. 2017 (PMC5594082) - one-compartment, first-order absorption/
 // elimination with a lag time for the RBC hydrolysis step. Cmax is a Bateman scale factor
 // calibrated so the curve peaks at 118 ng/mL at 100mg (see llm-wiki adhd-medications topic).
-export type MedicationId = 'elvanse' | 'medikinet'
+export type MedicationId = 'elvanse' | 'medikinet' | 'concerta'
 
 export interface Dose {
   time: number // decimal hour
@@ -107,6 +107,38 @@ function medikinetConcentration(tSinceDose: number, doseMg: number): number {
   return (ir + er) * doseMg
 }
 
+// --- Concerta: three-Bateman OROS ascending-release approximation ---
+// PK source: concerta-pk-parameter-reference.md / concerta-oros-mechanism-and-pk-model.md.
+// Concerta's OROS pump delivers continuously at an ASCENDING rate (not a flat zero-order rate,
+// and not a second discrete pulse), so the two-Bateman IR+ER split used for Medikinet doesn't
+// fit - fitting one would fabricate a second peak that isn't in the data. Modeled instead as
+// three overlapping Bateman components (22% IR overcoat + two osmotic-core layers releasing
+// at increasing concentration), which stays in the existing Bateman-sum architecture while
+// producing the right ascending shape. d-MPH elimination is slightly faster here than
+// Medikinet (Ke=0.198/h, t1/2=3.5h vs 0.151/h, t1/2=4.6h - both from their respective FDA/SmPC
+// labels).
+const CONCERTA_KE = 0.198
+const CONCERTA_COMPONENTS: { fraction: number; ka: number; lagHours: number }[] = [
+  { fraction: 0.22, ka: 1.5, lagHours: 0 },   // IR overcoat - initial shoulder at ~1h
+  { fraction: 0.35, ka: 0.4, lagHours: 0.5 }, // OROS early layer - fills the 1-4h plateau
+  { fraction: 0.43, ka: 0.3, lagHours: 3.5 }, // OROS late layer - drives the ascending peak at 6-8h
+]
+
+// Calibrated so the combined curve peaks at 3.7 ng/mL at 18mg (FDA label Cmax, the conservative
+// of the two label-derived CMAX_PER_MG estimates). No closed form for a 3-component sum's peak,
+// so the scale factor was found numerically against the unscaled shape above.
+const CONCERTA_SCALE = 0.5153
+
+function concertaConcentration(tSinceDose: number, doseMg: number): number {
+  let shape = 0
+  for (const { fraction, ka, lagHours } of CONCERTA_COMPONENTS) {
+    const t = tSinceDose - lagHours
+    if (t <= 0) continue
+    shape += fraction * (ka / (ka - CONCERTA_KE)) * (Math.exp(-CONCERTA_KE * t) - Math.exp(-ka * t))
+  }
+  return shape * CONCERTA_SCALE * doseMg
+}
+
 // Tolerance compartment (Mager 2014-style): dT/dt = K_TOL*C - K_DEG*T, effective = C/(1+T).
 // K_TOL is scaled per ng/mL (not per normalized concentration) since C is real plasma ng/mL.
 // Elvanse (amphetamine): at a sustained C=100 this settles to T=k_tol*C/k_deg=0.33, i.e.
@@ -115,13 +147,16 @@ function medikinetConcentration(tSinceDose: number, doseMg: number): number {
 // healthy volunteers at research doses, not therapeutic ADHD cognitive effects - wearing-off
 // here should be driven mainly by PK decline + circadian dip, with tolerance as a minor
 // correction on top.
-// Medikinet (methylphenidate): lower k_tol - MPH blocks DAT reuptake rather than forcing
-// vesicular dopamine release, so it produces less tachyphylaxis than amphetamine (see
-// mph-vs-amphetamine-pkpd-differences.md). MPH's much lower Cmax (~12ng/mL vs ~110ng/mL for
-// Elvanse) means most of its wearing-off is genuine PK decline (t1/2=4.6h) rather than
-// tolerance build-up.
+// Medikinet and Concerta (both methylphenidate): lower k_tol - MPH blocks DAT reuptake rather
+// than forcing vesicular dopamine release, so it produces less tachyphylaxis than amphetamine
+// (see mph-vs-amphetamine-pkpd-differences.md). MPH's much lower Cmax (~4-12ng/mL vs ~110ng/mL
+// for Elvanse) means most of its wearing-off is genuine PK decline rather than tolerance
+// build-up. Concerta's ascending delivery was specifically engineered to counteract acute
+// tolerance (concerta-oros-mechanism-and-pk-model.md) but that's a PK-shape effect already
+// captured by concertaConcentration's rising curve - the underlying MPH tolerance rate itself
+// is shared with Medikinet, not separately tuned.
 const TOLERANCE_K_TOL_ELVANSE = 0.0005
-const TOLERANCE_K_TOL_MEDIKINET = 0.0007
+const TOLERANCE_K_TOL_MPH = 0.0007
 const TOLERANCE_K_DEG = 0.15
 export const DEFAULT_TOLERANCE_STRENGTH = 1
 
@@ -134,7 +169,7 @@ const CIRCADIAN_AMPLITUDE = 0.15
 const CIRCADIAN_TROUGH = 16.0
 
 function toleranceRateFor(medication: MedicationId): number {
-  return medication === 'medikinet' ? TOLERANCE_K_TOL_MEDIKINET : TOLERANCE_K_TOL_ELVANSE
+  return medication === 'elvanse' ? TOLERANCE_K_TOL_ELVANSE : TOLERANCE_K_TOL_MPH
 }
 
 function applyToleranceAndCircadian(
@@ -166,9 +201,9 @@ function applyToleranceAndCircadian(
 export type ToleranceStrengths = Partial<Record<MedicationId, number>>
 export type EffectStrengths = Partial<Record<MedicationId, number>>
 
-const DEFAULT_TOLERANCE_STRENGTHS: ToleranceStrengths = { elvanse: 1, medikinet: 1 }
+const DEFAULT_TOLERANCE_STRENGTHS: ToleranceStrengths = { elvanse: 1, medikinet: 1, concerta: 1 }
 export const DEFAULT_EFFECT_STRENGTH = 1
-const DEFAULT_EFFECT_STRENGTHS: EffectStrengths = { elvanse: 1, medikinet: 1 }
+const DEFAULT_EFFECT_STRENGTHS: EffectStrengths = { elvanse: 1, medikinet: 1, concerta: 1 }
 
 export function computeSchedule(
   doses: Dose[],
@@ -196,7 +231,9 @@ export function computeSchedule(
   for (const dose of doses) {
     const conc = dose.medication === 'elvanse'
       ? timeArray.map(t => elvanseBiExponential(t - dose.time, dose.mg, onsetHours))
-      : timeArray.map(t => medikinetConcentration(t - dose.time, dose.mg))
+      : dose.medication === 'medikinet'
+      ? timeArray.map(t => medikinetConcentration(t - dose.time, dose.mg))
+      : timeArray.map(t => concertaConcentration(t - dose.time, dose.mg))
 
     // Individual line shows this dose's own effective curve (tolerance/circadian applied
     // standalone) rather than raw plasma - matches what the combined total actually plots.
