@@ -6,6 +6,29 @@ export interface ChartOptions {
   currentTime: number
 }
 
+function findThresholdCrossing(
+  t: number[],
+  y: number[],
+  threshold: number,
+): { start: number; end: number } | null {
+  let start: number | null = null
+  let end: number | null = null
+  for (let i = 1; i < t.length; i++) {
+    const prev = y[i - 1]
+    const curr = y[i]
+    if (prev < threshold && curr >= threshold && start === null) {
+      const frac = (threshold - prev) / (curr - prev)
+      start = t[i - 1] + frac * (t[i] - t[i - 1])
+    }
+    if (prev >= threshold && curr < threshold) {
+      const frac = (threshold - prev) / (curr - prev)
+      end = t[i - 1] + frac * (t[i] - t[i - 1])
+    }
+  }
+  if (start === null) return null
+  return { start, end: end ?? t[t.length - 1] }
+}
+
 export function buildFigure(
   results: ConcentrationResult[],
   options: ChartOptions,
@@ -41,7 +64,7 @@ export function buildFigure(
         y: conc,
         mode: 'lines',
         name: 'dose',
-        line: { color: 'rgba(180,180,180,0.5)', width: 1.5 },
+        line: { color: 'rgba(180,180,180,0.6)', width: 1.5, dash: 'dot' },
         showlegend: false,
         hoverinfo: 'skip',
       } as Data)
@@ -50,12 +73,13 @@ export function buildFigure(
     const totalName = multiSchedule
       ? `Total Concentration Option ${i + 1}`
       : 'Total Concentration'
+    const totalColor = i === 0 ? '#374151' : '#6366f1'
     data.push({
       x: timeArray,
       y: total,
       mode: 'lines',
       name: totalName,
-      line: { width: 2.5, color: '#374151' },
+      line: { width: 2.5, color: totalColor },
       hoverinfo: 'none',
     } as Data)
   }
@@ -83,13 +107,26 @@ export function buildFigure(
     line: { color: 'rgba(22,163,74,0.6)', width: 2 },
   } as Partial<Layout>['shapes'][0])
 
-
+  const crossing = findThresholdCrossing(t0, total0, threshold)
+  if (crossing) {
+    const durationHours = Math.round(crossing.end - crossing.start)
+    annotations.push({
+      x: (crossing.start + crossing.end) / 2,
+      y: threshold,
+      xref: 'x',
+      yref: 'y',
+      yshift: 14,
+      text: `${durationHours}h`,
+      showarrow: false,
+      font: { size: 11, color: '#16a34a' },
+    } as Partial<Layout>['annotations'][0])
+  }
 
   const layout: Partial<Layout> = {
     xaxis: {
       range: [5, 24],
       tickvals: [6, 9, 12, 15, 18, 21],
-      ticktext: ['6am', '9am', '12pm', '3pm', '6pm', '9pm'],
+      ticktext: ['06:00', '09:00', '12:00', '15:00', '18:00', '21:00'],
       showgrid: false,
       zeroline: false,
       tickfont: { size: 11, color: '#9ca3af' },
