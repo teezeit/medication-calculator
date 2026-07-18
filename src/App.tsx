@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import Plotly from "plotly.js-dist-min";
 import { computeSchedule, DEFAULT_ONSET_MINUTES } from "./model";
-import type { Dose, MedicationId } from "./model";
+import type { ConcentrationResult, Dose, MedicationId } from "./model";
 import { buildFigure } from "./chart";
 import { parseTime, decimalHourToHHMM, concAtTime } from "./utils";
 
@@ -199,10 +199,12 @@ function HelpAdjustRow({
   icon,
   from,
   to,
+  preview,
 }: {
   icon: keyof typeof HELP_ICONS;
   from: string;
   to: string;
+  preview?: ReactNode;
 }) {
   return (
     <div className="flex items-start gap-2.5 text-xs">
@@ -212,6 +214,7 @@ function HelpAdjustRow({
       <div className="py-0.5">
         <p className="text-gray-500">{from}</p>
         <p className="text-gray-700 font-medium mt-0.5">&rarr; {to}</p>
+        {preview}
       </div>
     </div>
   );
@@ -224,6 +227,71 @@ function sparklinePath(values: number[], width: number, height: number): string 
   return values
     .map((y, i) => `${i === 0 ? "M" : "L"}${(i * step).toFixed(1)},${(height - (y / maxY) * height).toFixed(1)}`)
     .join(" ");
+}
+
+// Same as sparklinePath, but two series share one y-scale so a height difference between
+// them (e.g. personal effect strength) actually shows up, instead of each being normalized
+// to fill the box independently.
+function dualSparklinePaths(a: number[], b: number[], width: number, height: number) {
+  const maxY = Math.max(...a, ...b, 1);
+  const step = width / (a.length - 1);
+  const toPath = (ys: number[]) =>
+    ys.map((y, i) => `${i === 0 ? "M" : "L"}${(i * step).toFixed(1)},${(height - (y / maxY) * height).toFixed(1)}`).join(" ");
+  return { pathA: toPath(a), pathB: toPath(b) };
+}
+
+const EXAMPLE_DOSE: Dose = { time: 7, mg: 40, medication: "elvanse" };
+
+// The full 5-24h schedule flattens small differences into invisibility at sparkline size -
+// crop to the window that actually shows the effect being illustrated.
+function windowSlice(result: ConcentrationResult, fromT: number, toT: number): number[] {
+  const startIdx = result.timeArray.findIndex((t) => t >= fromT);
+  const endIdxRaw = result.timeArray.findIndex((t) => t > toT);
+  const endIdx = endIdxRaw === -1 ? result.timeArray.length : endIdxRaw;
+  return result.total.slice(Math.max(0, startIdx), endIdx);
+}
+
+function AdjustPreview({ pathA, pathB, colorB }: { pathA: string; pathB: string; colorB: string }) {
+  return (
+    <svg width="72" height="26" viewBox="0 0 72 26" preserveAspectRatio="none" className="mt-1.5">
+      <path d={pathA} stroke="#d1d5db" strokeWidth="1.5" fill="none" />
+      <path d={pathB} stroke={colorB} strokeWidth="1.5" fill="none" />
+    </svg>
+  );
+}
+
+function ThresholdPreview() {
+  const result = computeSchedule([EXAMPLE_DOSE]);
+  const values = windowSlice(result, 6.5, 17);
+  const path = sparklinePath(values, 72, 26);
+  return (
+    <svg width="72" height="26" viewBox="0 0 72 26" preserveAspectRatio="none" className="mt-1.5">
+      <path d={path} stroke="#d1d5db" strokeWidth="1.5" fill="none" />
+      <line x1="0" y1="18" x2="72" y2="18" stroke="#22c55e" strokeWidth="1.5" opacity="0.5" />
+      <line x1="0" y1="9" x2="72" y2="9" stroke="#22c55e" strokeWidth="1.5" />
+    </svg>
+  );
+}
+
+function OnsetPreview() {
+  const fast = windowSlice(computeSchedule([EXAMPLE_DOSE], 15), 6.5, 10);
+  const slow = windowSlice(computeSchedule([EXAMPLE_DOSE], 90), 6.5, 10);
+  const { pathA, pathB } = dualSparklinePaths(slow, fast, 72, 26);
+  return <AdjustPreview pathA={pathA} pathB={pathB} colorB="#3b82f6" />;
+}
+
+function WearingOffPreview() {
+  const normal = windowSlice(computeSchedule([EXAMPLE_DOSE], DEFAULT_ONSET_MINUTES, { elvanse: 1 }), 6.5, 17);
+  const strong = windowSlice(computeSchedule([EXAMPLE_DOSE], DEFAULT_ONSET_MINUTES, { elvanse: 3 }), 6.5, 17);
+  const { pathA, pathB } = dualSparklinePaths(normal, strong, 72, 26);
+  return <AdjustPreview pathA={pathA} pathB={pathB} colorB="#f97316" />;
+}
+
+function EffectStrengthPreview() {
+  const normal = windowSlice(computeSchedule([EXAMPLE_DOSE], DEFAULT_ONSET_MINUTES, { elvanse: 1 }, { elvanse: 1 }), 6.5, 17);
+  const half = windowSlice(computeSchedule([EXAMPLE_DOSE], DEFAULT_ONSET_MINUTES, { elvanse: 1 }, { elvanse: 0.5 }), 6.5, 17);
+  const { pathA, pathB } = dualSparklinePaths(normal, half, 72, 26);
+  return <AdjustPreview pathA={pathA} pathB={pathB} colorB="#a855f7" />;
 }
 
 const MEDICATION_EXAMPLE_DOSE: Record<MedicationId, number> = { elvanse: 40, medikinet: 20, concerta: 36 };
@@ -771,10 +839,30 @@ export default function App() {
 
             <HelpStep number={4} title="Compare & adjust one at a time">
               <div className="space-y-2.5 mt-2">
-                <HelpAdjustRow icon="threshold" from="Above-threshold duration off" to="Personal threshold" />
-                <HelpAdjustRow icon="onset" from="Kicks in earlier/later (Elvanse only)" to="Onset" />
-                <HelpAdjustRow icon="wearingOff" from="Fades before the dose should be done" to="Wearing-off strength" />
-                <HelpAdjustRow icon="effect" from="Hits stronger/weaker than another med" to="Personal effect strength" />
+                <HelpAdjustRow
+                  icon="threshold"
+                  from="Above-threshold duration off"
+                  to="Personal threshold"
+                  preview={<ThresholdPreview />}
+                />
+                <HelpAdjustRow
+                  icon="onset"
+                  from="Kicks in earlier/later (Elvanse only)"
+                  to="Onset"
+                  preview={<OnsetPreview />}
+                />
+                <HelpAdjustRow
+                  icon="wearingOff"
+                  from="Fades before the dose should be done"
+                  to="Wearing-off strength"
+                  preview={<WearingOffPreview />}
+                />
+                <HelpAdjustRow
+                  icon="effect"
+                  from="Hits stronger/weaker than another med"
+                  to="Personal effect strength"
+                  preview={<EffectStrengthPreview />}
+                />
               </div>
             </HelpStep>
 
