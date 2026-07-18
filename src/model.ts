@@ -164,13 +164,17 @@ function applyToleranceAndCircadian(
 }
 
 export type ToleranceStrengths = Partial<Record<MedicationId, number>>
+export type EffectStrengths = Partial<Record<MedicationId, number>>
 
 const DEFAULT_TOLERANCE_STRENGTHS: ToleranceStrengths = { elvanse: 1, medikinet: 1 }
+export const DEFAULT_EFFECT_STRENGTH = 1
+const DEFAULT_EFFECT_STRENGTHS: EffectStrengths = { elvanse: 1, medikinet: 1 }
 
 export function computeSchedule(
   doses: Dose[],
   onsetMinutes: number = DEFAULT_ONSET_MINUTES,
   toleranceStrengths: ToleranceStrengths = DEFAULT_TOLERANCE_STRENGTHS,
+  effectStrengths: EffectStrengths = DEFAULT_EFFECT_STRENGTHS,
 ): ConcentrationResult {
   const length = 1140
   const timeArray = Array.from({ length }, (_, i) => 5 + i * (19 / (length - 1)))
@@ -181,6 +185,13 @@ export function computeSchedule(
 
   const toleranceStrengthFor = (medication: MedicationId) =>
     toleranceStrengths[medication] ?? DEFAULT_TOLERANCE_STRENGTH
+  // Personal sensitivity multiplier - MPH exposure varies enormously between people (CES1
+  // genotype drives >100% CV in clearance, see mph-pk-parameter-reference.md), and even for a
+  // fixed plasma level, subjective/functional response to a given drug varies person to
+  // person. Applied last, after tolerance/circadian, so it scales the perceived effect rather
+  // than the underlying pharmacology (tolerance still builds off actual plasma levels).
+  const effectStrengthFor = (medication: MedicationId) =>
+    effectStrengths[medication] ?? DEFAULT_EFFECT_STRENGTH
 
   for (const dose of doses) {
     const conc = dose.medication === 'elvanse'
@@ -191,9 +202,11 @@ export function computeSchedule(
     // standalone) rather than raw plasma - matches what the combined total actually plots.
     // Tolerance from other same-day doses isn't reflected here since it's not separable
     // once doses overlap; the combined total below is the correct systemic number.
-    individual.push(applyToleranceAndCircadian(
+    const doseEffective = applyToleranceAndCircadian(
       timeArray, conc, toleranceStrengthFor(dose.medication), toleranceRateFor(dose.medication),
-    ))
+    )
+    const doseStrength = effectStrengthFor(dose.medication)
+    individual.push(doseEffective.map(v => v * doseStrength))
 
     const raw = rawByMedication.get(dose.medication) ?? new Array<number>(length).fill(0)
     conc.forEach((v, i) => { raw[i] += v })
@@ -204,7 +217,8 @@ export function computeSchedule(
     const effective = applyToleranceAndCircadian(
       timeArray, raw, toleranceStrengthFor(medication), toleranceRateFor(medication),
     )
-    effective.forEach((v, i) => { total[i] += v })
+    const strength = effectStrengthFor(medication)
+    effective.forEach((v, i) => { total[i] += v * strength })
   }
 
   return { timeArray, total, individual }

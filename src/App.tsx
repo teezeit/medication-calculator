@@ -309,6 +309,11 @@ export default function App() {
   // different rates for different people.
   const [toleranceLevelElvanse, setToleranceLevelElvanse] = useState<number>(saved?.toleranceLevelElvanse ?? 50);
   const [toleranceLevelMedikinet, setToleranceLevelMedikinet] = useState<number>(saved?.toleranceLevelMedikinet ?? 50);
+  // Same plain 0-100 scale as wearing-off strength (50 -> 1x). Captures personal sensitivity -
+  // some people feel a given medication more strongly than another at an equivalent dose (e.g.
+  // MPH exposure varies enormously by CES1 genotype), independent of how fast it wears off.
+  const [effectStrengthElvanse, setEffectStrengthElvanse] = useState<number>(saved?.effectStrengthElvanse ?? 50);
+  const [effectStrengthMedikinet, setEffectStrengthMedikinet] = useState<number>(saved?.effectStrengthMedikinet ?? 50);
   const [showSettings, setShowSettings] = useState(false);
   const [isMobile, setIsMobile] = useState(true);
 
@@ -328,8 +333,16 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    saveState({ activeTab, doses1, doses2, threshold, onsetMinutes, toleranceLevelElvanse, toleranceLevelMedikinet });
-  }, [activeTab, doses1, doses2, threshold, onsetMinutes, toleranceLevelElvanse, toleranceLevelMedikinet]);
+    saveState({
+      activeTab, doses1, doses2, threshold, onsetMinutes,
+      toleranceLevelElvanse, toleranceLevelMedikinet,
+      effectStrengthElvanse, effectStrengthMedikinet,
+    });
+  }, [
+    activeTab, doses1, doses2, threshold, onsetMinutes,
+    toleranceLevelElvanse, toleranceLevelMedikinet,
+    effectStrengthElvanse, effectStrengthMedikinet,
+  ]);
 
   const [tick, setTick] = useState(0);
   useEffect(() => {
@@ -356,7 +369,11 @@ export default function App() {
       elvanse: toleranceLevelElvanse / 50,
       medikinet: toleranceLevelMedikinet / 50,
     };
-    const results = schedules.map((s) => computeSchedule(s, onsetMinutes, toleranceStrengths));
+    const effectStrengths = {
+      elvanse: effectStrengthElvanse / 50,
+      medikinet: effectStrengthMedikinet / 50,
+    };
+    const results = schedules.map((s) => computeSchedule(s, onsetMinutes, toleranceStrengths, effectStrengths));
     const curConc = concAtTime(results[0], currentTime);
 
     currentConcRef.current = curConc;
@@ -394,13 +411,18 @@ export default function App() {
       setIsHovering(false);
     });
 
-  }, [doses1, doses2, threshold, onsetMinutes, toleranceLevelElvanse, toleranceLevelMedikinet, isMobile, activeTab, tick]);
+  }, [
+    doses1, doses2, threshold, onsetMinutes,
+    toleranceLevelElvanse, toleranceLevelMedikinet,
+    effectStrengthElvanse, effectStrengthMedikinet,
+    isMobile, activeTab, tick,
+  ]);
 
   const isAbove = displayedConc >= threshold;
   // Both medications run through tolerance/circadian layers that modify effect, not plasma
   // level, so the "total" isn't a real ng/mL reading - label it for what it is rather than
   // implying a lab value.
-  const concUnitLabel = "effective conc.";
+  const concUnitLabel = "concentration";
 
   return (
     <div className="max-w-xl mx-auto px-4 py-6">
@@ -474,6 +496,15 @@ export default function App() {
                 max={100}
                 onChange={setToleranceLevelElvanse}
               />
+              <SettingStepper
+                label="Personal effect strength"
+                hint="How strongly you respond to it"
+                value={effectStrengthElvanse}
+                step={10}
+                min={0}
+                max={100}
+                onChange={setEffectStrengthElvanse}
+              />
             </div>
           </div>
 
@@ -488,6 +519,15 @@ export default function App() {
                 min={0}
                 max={100}
                 onChange={setToleranceLevelMedikinet}
+              />
+              <SettingStepper
+                label="Personal effect strength"
+                hint="How strongly you respond to it"
+                value={effectStrengthMedikinet}
+                step={10}
+                min={0}
+                max={100}
+                onChange={setEffectStrengthMedikinet}
               />
             </div>
           </div>
@@ -518,12 +558,10 @@ export default function App() {
           {!isHovering && "Now · "}
           <span className={isHovering ? "text-gray-800" : "text-blue-500"}>{displayedTime}</span>
         </p>
-        <div className="flex items-baseline justify-center gap-1.5">
-          <span className="text-5xl font-bold tracking-tight tabular-nums">
-            {displayedConc.toFixed(0)}
-          </span>
-          <span className="text-sm text-gray-400">{concUnitLabel}</span>
+        <div className="text-5xl font-bold tracking-tight tabular-nums">
+          {displayedConc.toFixed(0)}
         </div>
+        <p className="text-sm text-gray-400">{concUnitLabel}</p>
         <div
           className={`mt-1.5 flex items-center justify-center gap-1.5 text-xs font-medium ${isAbove ? "text-green-600" : "text-red-500"}`}
         >
