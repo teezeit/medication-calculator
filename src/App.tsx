@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import Plotly from "plotly.js-dist-min";
 import { computeSchedule, DEFAULT_ONSET_MINUTES } from "./model";
 import type { Dose, MedicationId } from "./model";
@@ -138,6 +139,130 @@ function TimeInput({
   );
 }
 
+function HelpStep({
+  number,
+  title,
+  children,
+}: {
+  number: number;
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex gap-3 border border-gray-200 rounded-lg p-3">
+      <div className="w-6 h-6 flex-shrink-0 flex items-center justify-center rounded-full bg-gray-900 text-white text-xs font-semibold tabular-nums">
+        {number}
+      </div>
+      <div className="text-sm">
+        <p className="font-medium text-gray-800">{title}</p>
+        <div className="text-gray-500 mt-0.5">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+const HELP_ICONS = {
+  threshold: (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.5" />
+      <circle cx="12" cy="12" r="4.5" stroke="currentColor" strokeWidth="1.5" />
+      <circle cx="12" cy="12" r="1.2" fill="currentColor" />
+    </svg>
+  ),
+  onset: (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M12 7v5l3.5 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  wearingOff: (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+      <path d="M4 8l6 6 3-3 7 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M15 18h5v-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  effect: (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+      <path d="M13 3L5 14h5l-1 7 8-11h-5l1-7z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+    </svg>
+  ),
+};
+
+const HELP_ICON_COLORS = {
+  threshold: "bg-green-50 text-green-500",
+  onset: "bg-blue-50 text-blue-500",
+  wearingOff: "bg-orange-50 text-orange-500",
+  effect: "bg-purple-50 text-purple-500",
+};
+
+function HelpAdjustRow({
+  icon,
+  from,
+  to,
+}: {
+  icon: keyof typeof HELP_ICONS;
+  from: string;
+  to: string;
+}) {
+  return (
+    <div className="flex items-center gap-2 text-xs">
+      <span className={`w-5 h-5 flex-shrink-0 flex items-center justify-center rounded-full ${HELP_ICON_COLORS[icon]}`}>
+        {HELP_ICONS[icon]}
+      </span>
+      <span className="text-gray-500">{from}</span>
+      <span className="text-gray-300">&rarr;</span>
+      <span className="text-gray-700 font-medium">{to}</span>
+    </div>
+  );
+}
+
+// Renders a raw values array as a smooth sparkline path, scaled to fill the given box.
+function sparklinePath(values: number[], width: number, height: number): string {
+  const maxY = Math.max(...values, 1);
+  const step = width / (values.length - 1);
+  return values
+    .map((y, i) => `${i === 0 ? "M" : "L"}${(i * step).toFixed(1)},${(height - (y / maxY) * height).toFixed(1)}`)
+    .join(" ");
+}
+
+const MEDICATION_EXAMPLE_DOSE: Record<MedicationId, number> = { elvanse: 40, medikinet: 20, concerta: 36 };
+
+const MEDICATION_ELI5: Record<MedicationId, { title: string; explanation: string }> = {
+  elvanse: {
+    title: "Why Elvanse rises and falls smoothly",
+    explanation:
+      "The capsule itself is inactive - it's a \"prodrug\". Your body has to slowly chop it apart (in your red blood cells) before it becomes real medication. That slow chopping-up process is the rate-limiting step, which is why the curve is one smooth hump that rises and fades gradually over many hours instead of hitting all at once.",
+  },
+  medikinet: {
+    title: "Why Medikinet has two bumps",
+    explanation:
+      "The capsule contains two different kinds of pearls: white ones that dissolve right away, and blue ones with a special coating that only dissolves once it hits your gut later on. Each kind of pearl makes its own little peak, which is why the curve has two separate bumps instead of one.",
+  },
+  concerta: {
+    title: "Why Concerta climbs steadily instead of peaking",
+    explanation:
+      "It's a tiny osmotic pump: water seeps in through the shell, and pushes the medication out through a laser-drilled hole at the other end - at a rate that's engineered to speed up over the day. There's no single moment where it \"peaks and drops\" like a normal pill - it just climbs steadily for hours, then tapers off once the pump runs dry.",
+  },
+};
+
+function MedicationEli5Card({ medication }: { medication: MedicationId }) {
+  const doseMg = MEDICATION_EXAMPLE_DOSE[medication];
+  const result = computeSchedule([{ time: 7, mg: doseMg, medication }]);
+  const path = sparklinePath(result.total, 200, 48);
+  const { title, explanation } = MEDICATION_ELI5[medication];
+
+  return (
+    <div className="border border-gray-200 rounded-lg p-3">
+      <p className="text-xs font-semibold text-gray-600 mb-2">{MEDICATION_LABELS[medication]}</p>
+      <svg width="100%" height="48" viewBox="0 0 200 48" preserveAspectRatio="none" className="text-gray-400">
+        <path d={path} stroke="currentColor" strokeWidth="1.5" fill="none" />
+      </svg>
+      <p className="text-xs font-medium text-gray-700 mt-2">{title}</p>
+      <p className="text-xs text-gray-500 mt-1">{explanation}</p>
+    </div>
+  );
+}
+
 function SettingStepper({
   label,
   hint,
@@ -147,6 +272,7 @@ function SettingStepper({
   min,
   max,
   onChange,
+  icon,
 }: {
   label: string;
   hint: string;
@@ -156,12 +282,20 @@ function SettingStepper({
   min: number;
   max: number;
   onChange: (updater: (v: number) => number) => void;
+  icon?: keyof typeof HELP_ICONS;
 }) {
   return (
     <div className="flex items-center justify-between">
-      <div>
-        <span className="text-xs text-gray-400">{label}</span>
-        <p className="text-[11px] text-gray-300">{hint}</p>
+      <div className="flex items-center gap-2">
+        {icon && (
+          <span className={`w-6 h-6 flex-shrink-0 flex items-center justify-center rounded-full ${HELP_ICON_COLORS[icon]}`}>
+            {HELP_ICONS[icon]}
+          </span>
+        )}
+        <div>
+          <span className="text-xs text-gray-400">{label}</span>
+          <p className="text-[11px] text-gray-300">{hint}</p>
+        </div>
       </div>
       <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
         <button
@@ -198,6 +332,10 @@ function shiftHour(time: string, delta: number): string {
   return `${String(newHour).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
+// iOS Safari (outside an installed home-screen PWA) has no Notification API at all - hide the
+// alarm toggle entirely there rather than showing a bell that can never fire.
+const ALARMS_SUPPORTED = typeof window !== "undefined" && "Notification" in window;
+
 function DoseTable({
   rows,
   onChange,
@@ -208,12 +346,35 @@ function DoseTable({
   const update = (i: number, field: keyof DoseRow, value: string | number | boolean) =>
     onChange(rows.map((r, idx) => (idx === i ? { ...r, [field]: value } : r)));
 
-  const toggleAlarm = (i: number, row: DoseRow) => {
-    const next = !row.alarm;
-    if (next && "Notification" in window && Notification.permission === "default") {
-      Notification.requestPermission();
+  const [rowNotice, setRowNotice] = useState<{ index: number; type: "blocked" | "confirmed" } | null>(null);
+
+  useEffect(() => {
+    if (!rowNotice) return;
+    const id = setTimeout(() => setRowNotice(null), 6000);
+    return () => clearTimeout(id);
+  }, [rowNotice]);
+
+  const toggleAlarm = async (i: number, row: DoseRow) => {
+    if (row.alarm) {
+      update(i, "alarm", false);
+      setRowNotice(null);
+      return;
     }
-    update(i, "alarm", next);
+
+    let permission = Notification.permission;
+    if (permission === "default") {
+      permission = await Notification.requestPermission();
+    }
+    if (permission !== "granted") {
+      setRowNotice({ index: i, type: "blocked" });
+      return;
+    }
+
+    update(i, "alarm", true);
+    new Notification("Alarm set", {
+      body: `${MEDICATION_LABELS[row.medication]} ${row.mg}mg at ${row.time} - keep this tab open for it to fire.`,
+    });
+    setRowNotice({ index: i, type: "confirmed" });
   };
 
   return (
@@ -233,25 +394,29 @@ function DoseTable({
                   </option>
                 ))}
               </select>
-              <button
-                onClick={() => toggleAlarm(i, row)}
-                className={`w-8 h-8 flex-shrink-0 flex items-center justify-center transition-colors rounded-lg ml-auto ${
-                  row.alarm ? "text-blue-500" : "text-gray-300 hover:text-gray-400"
-                }`}
-                aria-label={row.alarm ? "Disable alarm" : "Enable alarm"}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill={row.alarm ? "currentColor" : "none"}>
-                  <path
-                    d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </button>
+              {ALARMS_SUPPORTED && (
+                <button
+                  onClick={() => toggleAlarm(i, row)}
+                  className={`w-8 h-8 flex-shrink-0 flex items-center justify-center transition-colors rounded-lg ml-auto ${
+                    row.alarm ? "text-blue-500" : "text-gray-300 hover:text-gray-400"
+                  }`}
+                  aria-label={row.alarm ? "Disable alarm" : "Enable alarm"}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill={row.alarm ? "currentColor" : "none"}>
+                    <path
+                      d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
+              )}
               <button
                 onClick={() => onChange(rows.filter((_, idx) => idx !== i))}
-                className="w-8 h-8 flex-shrink-0 flex items-center justify-center text-gray-300 hover:text-red-400 transition-colors rounded-lg"
+                className={`w-8 h-8 flex-shrink-0 flex items-center justify-center text-gray-300 hover:text-red-400 transition-colors rounded-lg ${
+                  ALARMS_SUPPORTED ? "" : "ml-auto"
+                }`}
                 aria-label="Remove dose"
               >
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
@@ -322,6 +487,13 @@ function DoseTable({
                 <span className="text-xs text-gray-400">mg</span>
               </div>
             </div>
+            {rowNotice?.index === i && (
+              <p className={`text-[11px] mt-1.5 ${rowNotice.type === "blocked" ? "text-red-400" : "text-blue-400"}`}>
+                {rowNotice.type === "blocked"
+                  ? "Notifications blocked - check browser/OS notification settings for this site."
+                  : "Alarm set - keep this tab open for it to fire."}
+              </p>
+            )}
           </div>
         ))}
       </div>
@@ -389,34 +561,31 @@ export default function App() {
     return () => clearInterval(id);
   }, []);
 
-  // Schedules a one-shot Notification for each alarm-enabled dose still ahead today. Relies on
-  // the tab staying open (no service worker) - closing or reloading the tab drops any pending
-  // alarms, and one that already fired today won't re-fire until tomorrow's mount.
+  // Fires a Notification for each alarm-enabled dose whose time matches the current minute -
+  // recurs every day the row stays enabled, since it checks the clock rather than scheduling a
+  // fixed one-shot delay. Relies on the tab staying open (no service worker): closing or
+  // reloading the tab, or the OS suspending the tab, means missed alarms.
+  const firedAlarmsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (!("Notification" in window)) return;
 
+    const now = new Date();
+    const nowHM = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+    const dayKey = now.toDateString();
     const rows = activeTab === "compare" ? [...doses1, ...doses2] : doses1;
-    const now = Date.now();
-    const timers = rows
-      .filter((r) => r.alarm && r.time)
-      .map((r) => {
-        const [h, m] = r.time.split(":").map((n) => parseInt(n) || 0);
-        const fireAt = new Date();
-        fireAt.setHours(h, m, 0, 0);
-        const delay = fireAt.getTime() - now;
-        if (delay <= 0) return null;
-        return window.setTimeout(() => {
-          if (Notification.permission === "granted") {
-            new Notification("Dose reminder", {
-              body: `${MEDICATION_LABELS[r.medication]} ${r.mg}mg at ${r.time}`,
-            });
-          }
-        }, delay);
-      })
-      .filter((id): id is number => id !== null);
 
-    return () => timers.forEach((id) => clearTimeout(id));
-  }, [doses1, doses2, activeTab]);
+    rows.forEach((r, idx) => {
+      if (!r.alarm || r.time !== nowHM) return;
+      const fireKey = `${dayKey}-${idx}-${r.time}-${r.medication}-${r.mg}`;
+      if (firedAlarmsRef.current.has(fireKey)) return;
+      firedAlarmsRef.current.add(fireKey);
+      if (Notification.permission === "granted") {
+        new Notification("Dose reminder", {
+          body: `${MEDICATION_LABELS[r.medication]} ${r.mg}mg at ${r.time}`,
+        });
+      }
+    });
+  }, [tick, doses1, doses2, activeTab]);
 
   useEffect(() => {
     if (!chartRef.current) return;
@@ -558,40 +727,43 @@ export default function App() {
       </div>
 
       {activeTab === "help" && (
-        <div className="px-1 space-y-4 text-sm text-gray-600">
-          <div>
-            <p className="font-semibold text-gray-800 mb-1">First-time setup</p>
-            <ol className="list-decimal list-inside space-y-2">
-              <li>Enter your real dose schedule (medication, time, mg) for a typical day.</li>
-              <li>
-                Set <span className="font-medium text-gray-800">Personal threshold</span> to roughly where you feel
-                "on" vs "off" - you'll refine this in a later step.
-              </li>
-              <li>
-                Leave <span className="font-medium text-gray-800">Onset</span>,{" "}
-                <span className="font-medium text-gray-800">Wearing-off strength</span>, and{" "}
-                <span className="font-medium text-gray-800">Personal effect strength</span> at their defaults for
-                the first pass.
-              </li>
-              <li>
-                Compare the chart to your actual day, then adjust one thing at a time:
-                <ul className="list-disc list-inside mt-1 ml-2 space-y-1 text-gray-500">
-                  <li>Above-threshold duration off &rarr; adjust <span className="text-gray-700">Personal threshold</span> first.</li>
-                  <li>Kicks in earlier/later than shown (Elvanse only) &rarr; adjust <span className="text-gray-700">Onset</span>.</li>
-                  <li>Feels like it fades before the dose should be done &rarr; raise that medication's <span className="text-gray-700">Wearing-off strength</span>.</li>
-                  <li>One medication hits stronger/weaker than another per mg &rarr; adjust its <span className="text-gray-700">Personal effect strength</span>.</li>
-                </ul>
-              </li>
-              <li>
-                Use <span className="font-medium text-gray-800">Reset to defaults</span> in Settings if you've
-                overtuned and want to start over.
-              </li>
-            </ol>
-          </div>
-          <p className="text-xs text-gray-400">
+        <div className="px-1 space-y-3">
+          <p className="text-xs font-semibold text-gray-600 mb-1">First-time setup</p>
+
+          <HelpStep number={1} title="Enter your real doses">
+            Medication, time, and mg for a typical day.
+          </HelpStep>
+
+          <HelpStep number={2} title="Set Personal threshold">
+            Roughly where you feel "on" vs "off" - you'll refine this in a later step.
+          </HelpStep>
+
+          <HelpStep number={3} title="Leave the sliders at default">
+            Onset, Wearing-off strength, and Personal effect strength start at sensible defaults - don't touch them yet.
+          </HelpStep>
+
+          <HelpStep number={4} title="Compare & adjust one at a time">
+            <div className="space-y-1.5 mt-1">
+              <HelpAdjustRow icon="threshold" from="Above-threshold duration off" to="Personal threshold" />
+              <HelpAdjustRow icon="onset" from="Kicks in earlier/later (Elvanse only)" to="Onset" />
+              <HelpAdjustRow icon="wearingOff" from="Fades before the dose should be done" to="Wearing-off strength" />
+              <HelpAdjustRow icon="effect" from="Hits stronger/weaker than another med" to="Personal effect strength" />
+            </div>
+          </HelpStep>
+
+          <HelpStep number={5} title="Reset if overtuned">
+            "Reset to defaults" in Settings puts everything back to start over.
+          </HelpStep>
+
+          <p className="text-xs text-gray-400 px-1 pt-1">
             The number on the main screen is a comparison score, not a real blood concentration - it only becomes
             useful once calibrated to match how you actually feel.
           </p>
+
+          <p className="text-xs font-semibold text-gray-600 mb-1 pt-2">Why each curve looks the way it does</p>
+          {SELECTABLE_MEDICATIONS.map((medication) => (
+            <MedicationEli5Card key={medication} medication={medication} />
+          ))}
         </div>
       )}
 
@@ -624,6 +796,7 @@ export default function App() {
                   onChange={(updater) =>
                     setToleranceLevels((levels) => ({ ...levels, [medication]: updater(levels[medication]) }))
                   }
+                  icon="wearingOff"
                 />
                 <SettingStepper
                   label="Personal effect strength"
@@ -635,6 +808,7 @@ export default function App() {
                   onChange={(updater) =>
                     setEffectStrengths((strengths) => ({ ...strengths, [medication]: updater(strengths[medication]) }))
                   }
+                  icon="effect"
                 />
                 {medication === "elvanse" && (
                   <SettingStepper
@@ -646,6 +820,7 @@ export default function App() {
                     min={5}
                     max={180}
                     onChange={setOnsetMinutes}
+                    icon="onset"
                   />
                 )}
               </div>
@@ -698,7 +873,12 @@ export default function App() {
 
           {/* Threshold stepper */}
           <div className="flex items-center justify-between mt-3 px-1">
-            <span className="text-xs text-gray-400">Personal threshold</span>
+            <span className="flex items-center gap-2 text-xs text-gray-400">
+              <span className={`w-6 h-6 flex-shrink-0 flex items-center justify-center rounded-full ${HELP_ICON_COLORS.threshold}`}>
+                {HELP_ICONS.threshold}
+              </span>
+              Personal threshold
+            </span>
             <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
               <button
                 onClick={() => setThreshold(t => Math.max(0, t - 5))}
