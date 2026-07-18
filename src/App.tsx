@@ -487,18 +487,6 @@ export default function App() {
             <div key={medication}>
               <p className="text-xs font-semibold text-gray-600 mb-2">{MEDICATION_LABELS[medication]}</p>
               <div className="space-y-3">
-                {medication === "elvanse" && (
-                  <SettingStepper
-                    label="Onset"
-                    hint="When you personally start feeling it"
-                    value={onsetMinutes}
-                    unit="min"
-                    step={5}
-                    min={5}
-                    max={180}
-                    onChange={setOnsetMinutes}
-                  />
-                )}
                 <SettingStepper
                   label="Wearing-off strength"
                   hint="How fast the effect fades through the day"
@@ -521,6 +509,18 @@ export default function App() {
                     setEffectStrengths((strengths) => ({ ...strengths, [medication]: updater(strengths[medication]) }))
                   }
                 />
+                {medication === "elvanse" && (
+                  <SettingStepper
+                    label="Onset"
+                    hint="When you personally start feeling it"
+                    value={onsetMinutes}
+                    unit="min"
+                    step={5}
+                    min={5}
+                    max={180}
+                    onChange={setOnsetMinutes}
+                  />
+                )}
               </div>
             </div>
           ))}
