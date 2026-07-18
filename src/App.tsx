@@ -149,13 +149,13 @@ function HelpStep({
   children: ReactNode;
 }) {
   return (
-    <div className="flex gap-3 border border-gray-200 rounded-lg p-3">
+    <div className="flex gap-3.5 border border-gray-200 rounded-lg p-4">
       <div className="w-6 h-6 flex-shrink-0 flex items-center justify-center rounded-full bg-gray-900 text-white text-xs font-semibold tabular-nums">
         {number}
       </div>
       <div className="text-sm">
         <p className="font-medium text-gray-800">{title}</p>
-        <div className="text-gray-500 mt-0.5">{children}</div>
+        <div className="text-gray-500 mt-1 leading-relaxed">{children}</div>
       </div>
     </div>
   );
@@ -205,13 +205,14 @@ function HelpAdjustRow({
   to: string;
 }) {
   return (
-    <div className="flex items-center gap-2 text-xs">
-      <span className={`w-5 h-5 flex-shrink-0 flex items-center justify-center rounded-full ${HELP_ICON_COLORS[icon]}`}>
+    <div className="flex items-start gap-2.5 text-xs">
+      <span className={`w-6 h-6 flex-shrink-0 flex items-center justify-center rounded-full mt-0.5 ${HELP_ICON_COLORS[icon]}`}>
         {HELP_ICONS[icon]}
       </span>
-      <span className="text-gray-500">{from}</span>
-      <span className="text-gray-300">&rarr;</span>
-      <span className="text-gray-700 font-medium">{to}</span>
+      <div className="py-0.5">
+        <p className="text-gray-500">{from}</p>
+        <p className="text-gray-700 font-medium mt-0.5">&rarr; {to}</p>
+      </div>
     </div>
   );
 }
@@ -252,13 +253,13 @@ function MedicationEli5Card({ medication }: { medication: MedicationId }) {
   const { title, explanation } = MEDICATION_ELI5[medication];
 
   return (
-    <div className="border border-gray-200 rounded-lg p-3">
-      <p className="text-xs font-semibold text-gray-600 mb-2">{MEDICATION_LABELS[medication]}</p>
+    <div className="border border-gray-200 rounded-lg p-4">
+      <p className="text-xs font-semibold text-gray-600 mb-3">{MEDICATION_LABELS[medication]}</p>
       <svg width="100%" height="48" viewBox="0 0 200 48" preserveAspectRatio="none" className="text-gray-400">
         <path d={path} stroke="currentColor" strokeWidth="1.5" fill="none" />
       </svg>
-      <p className="text-xs font-medium text-gray-700 mt-2">{title}</p>
-      <p className="text-xs text-gray-500 mt-1">{explanation}</p>
+      <p className="text-xs font-medium text-gray-700 mt-3">{title}</p>
+      <p className="text-xs text-gray-500 mt-1.5 leading-relaxed">{explanation}</p>
     </div>
   );
 }
@@ -727,43 +728,49 @@ export default function App() {
       </div>
 
       {activeTab === "help" && (
-        <div className="px-1 space-y-3">
-          <p className="text-xs font-semibold text-gray-600 mb-1">First-time setup</p>
+        <div className="px-1 pb-2">
+          <p className="text-xs font-semibold text-gray-600 mb-3">First-time setup</p>
 
-          <HelpStep number={1} title="Enter your real doses">
-            Medication, time, and mg for a typical day.
-          </HelpStep>
+          <div className="space-y-4">
+            <HelpStep number={1} title="Enter your real doses">
+              Medication, time, and mg for a typical day.
+            </HelpStep>
 
-          <HelpStep number={2} title="Set Personal threshold">
-            Roughly where you feel "on" vs "off" - you'll refine this in a later step.
-          </HelpStep>
+            <HelpStep number={2} title="Set Personal threshold">
+              Roughly where you feel "on" vs "off" - you'll refine this in a later step.
+            </HelpStep>
 
-          <HelpStep number={3} title="Leave the sliders at default">
-            Onset, Wearing-off strength, and Personal effect strength start at sensible defaults - don't touch them yet.
-          </HelpStep>
+            <HelpStep number={3} title="Leave the sliders at default">
+              Onset, Wearing-off strength, and Personal effect strength start at sensible defaults - don't touch them yet.
+            </HelpStep>
 
-          <HelpStep number={4} title="Compare & adjust one at a time">
-            <div className="space-y-1.5 mt-1">
-              <HelpAdjustRow icon="threshold" from="Above-threshold duration off" to="Personal threshold" />
-              <HelpAdjustRow icon="onset" from="Kicks in earlier/later (Elvanse only)" to="Onset" />
-              <HelpAdjustRow icon="wearingOff" from="Fades before the dose should be done" to="Wearing-off strength" />
-              <HelpAdjustRow icon="effect" from="Hits stronger/weaker than another med" to="Personal effect strength" />
-            </div>
-          </HelpStep>
+            <HelpStep number={4} title="Compare & adjust one at a time">
+              <div className="space-y-2.5 mt-2">
+                <HelpAdjustRow icon="threshold" from="Above-threshold duration off" to="Personal threshold" />
+                <HelpAdjustRow icon="onset" from="Kicks in earlier/later (Elvanse only)" to="Onset" />
+                <HelpAdjustRow icon="wearingOff" from="Fades before the dose should be done" to="Wearing-off strength" />
+                <HelpAdjustRow icon="effect" from="Hits stronger/weaker than another med" to="Personal effect strength" />
+              </div>
+            </HelpStep>
 
-          <HelpStep number={5} title="Reset if overtuned">
-            "Reset to defaults" in Settings puts everything back to start over.
-          </HelpStep>
+            <HelpStep number={5} title="Reset if overtuned">
+              "Reset to defaults" in Settings puts everything back to start over.
+            </HelpStep>
+          </div>
 
-          <p className="text-xs text-gray-400 px-1 pt-1">
+          <p className="text-xs text-gray-400 px-1 mt-4">
             The number on the main screen is a comparison score, not a real blood concentration - it only becomes
             useful once calibrated to match how you actually feel.
           </p>
 
-          <p className="text-xs font-semibold text-gray-600 mb-1 pt-2">Why each curve looks the way it does</p>
-          {SELECTABLE_MEDICATIONS.map((medication) => (
-            <MedicationEli5Card key={medication} medication={medication} />
-          ))}
+          <div className="border-t border-gray-100 mt-8 pt-6">
+            <p className="text-xs font-semibold text-gray-600 mb-3">Why each curve looks the way it does</p>
+            <div className="space-y-4">
+              {SELECTABLE_MEDICATIONS.map((medication) => (
+                <MedicationEli5Card key={medication} medication={medication} />
+              ))}
+            </div>
+          </div>
         </div>
       )}
 
