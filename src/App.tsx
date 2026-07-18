@@ -15,6 +15,19 @@ const MEDICATION_LABELS: Record<MedicationId, string> = {
 
 const SELECTABLE_MEDICATIONS: MedicationId[] = ["elvanse", "medikinet", "concerta"];
 
+// Wearing-off strength ceiling per medication - level 50 always maps to 1x (the literature-
+// sourced baseline), but level 100 maps to this multiplier instead of a flat 4x for everyone.
+// Medikinet/Concerta's tolerance rate is small by design (real MPH tachyphylaxis is mild, and
+// Concerta's ascending profile actively suppresses it further - see model.ts), which left almost
+// no visible curve difference across the slider's full range even at 4x. Elvanse's 4x ceiling
+// already gives a clearly tunable curve, so it's left alone.
+const TOLERANCE_CEILINGS: Record<MedicationId, number> = { elvanse: 4, medikinet: 12, concerta: 12 };
+
+function toleranceMultiplierFromLevel(level: number, medication: MedicationId): number {
+  const ceiling = TOLERANCE_CEILINGS[medication];
+  return level <= 50 ? level / 50 : 1 + ((level - 50) / 50) * (ceiling - 1);
+}
+
 const DEFAULT_DOSES_1: DoseRow[] = [
   { medication: "elvanse", time: "07:30", mg: 40 },
   { medication: "elvanse", time: "12:00", mg: 30 },
@@ -367,11 +380,12 @@ export default function App() {
         ? [entries1, entries2]
         : [entries1];
 
-    // Squared rather than linear: keeps level 50 = 1x (the literature-sourced baseline) exactly,
-    // but pushes the ceiling at level 100 from 2x to 4x - real tachyphylaxis varies enough
-    // person to person that a hard 2x cap left little room to dial in a stronger personal
-    // wearing-off curve.
-    const toleranceMultipliers = mapValues(toleranceLevels, (v) => (v / 50) ** 2);
+    const toleranceMultipliers = Object.fromEntries(
+      Object.entries(toleranceLevels).map(([medication, level]) => [
+        medication,
+        toleranceMultiplierFromLevel(level, medication as MedicationId),
+      ]),
+    ) as Record<MedicationId, number>;
     const effectMultipliers = mapValues(effectStrengths, (v) => v / 50);
     const results = schedules.map((s) => computeSchedule(s, onsetMinutes, toleranceMultipliers, effectMultipliers));
     const curConc = concAtTime(results[0], currentTime);
