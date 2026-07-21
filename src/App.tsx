@@ -30,8 +30,8 @@ function toleranceMultiplierFromLevel(level: number, medication: MedicationId): 
 }
 
 const DEFAULT_DOSES_1: DoseRow[] = [
-  { medication: "elvanse", time: "07:30", mg: 40 },
-  { medication: "elvanse", time: "12:00", mg: 30 },
+  { medication: "elvanse", time: "07:30", mg: 50 },
+  { medication: "medikinet", time: "13:00", mg: 10 },
 ];
 const DEFAULT_DOSES_2: DoseRow[] = [
   { medication: "elvanse", time: "07:30", mg: 70 },
@@ -586,7 +586,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<"single" | "compare" | "help">(saved?.activeTab ?? "single");
   const [doses1, setDoses1] = useState<DoseRow[]>(saved?.doses1 ?? DEFAULT_DOSES_1);
   const [doses2, setDoses2] = useState<DoseRow[]>(saved?.doses2 ?? DEFAULT_DOSES_2);
-  const [threshold, setThreshold] = useState<number>(saved?.threshold ?? 20);
+  const [threshold, setThreshold] = useState<number>(saved?.threshold ?? 25);
   const [onsetMinutes, setOnsetMinutes] = useState<number>(saved?.onsetMinutes ?? DEFAULT_ONSET_MINUTES);
   // Plain 0-100 scale, no "%" - a "tolerance %" reads as "how tolerant you are" (backwards).
   // 50 is the default/baseline wearing-off strength; internally scaled to the model's
@@ -751,12 +751,12 @@ export default function App() {
           ))}
           <button
             onClick={() => setActiveTab("help")}
-            className={`px-3 py-2.5 border-b-2 transition-colors -mb-px flex items-center justify-center ${
+            className={`px-3 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px flex items-center justify-center gap-1.5 ${
               activeTab === "help"
                 ? "border-gray-900 text-gray-900"
                 : "border-transparent text-gray-400 hover:text-gray-600"
             }`}
-            aria-label="Help"
+            aria-label="How to"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
               <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.5" />
@@ -769,6 +769,7 @@ export default function App() {
               />
               <circle cx="12" cy="17" r="0.9" fill="currentColor" />
             </svg>
+            How to
           </button>
           <a
             href="https://github.com/teezeit/medication-calculator"
