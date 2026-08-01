@@ -5,6 +5,7 @@ import { computeSchedule, DEFAULT_ONSET_MINUTES } from "./model";
 import type { ConcentrationResult, Dose, MedicationId } from "./model";
 import { buildFigure } from "./chart";
 import { parseTime, decimalHourToHHMM, concAtTime } from "./utils";
+import { capture } from "./posthog";
 
 type DoseRow = { medication: MedicationId; time: string; mg: number; alarm?: boolean };
 
@@ -408,9 +409,11 @@ const ALARMS_SUPPORTED = typeof window !== "undefined" && "Notification" in wind
 function DoseTable({
   rows,
   onChange,
+  tableLabel = "schedule_1",
 }: {
   rows: DoseRow[];
   onChange: (rows: DoseRow[]) => void;
+  tableLabel?: string;
 }) {
   const update = (i: number, field: keyof DoseRow, value: string | number | boolean) =>
     onChange(rows.map((r, idx) => (idx === i ? { ...r, [field]: value } : r)));
@@ -427,6 +430,7 @@ function DoseTable({
     if (row.alarm) {
       update(i, "alarm", false);
       setRowNotice(null);
+      capture("alarm_toggled", { enabled: false, medication: row.medication, time: row.time, mg: row.mg, table: tableLabel });
       return;
     }
 
@@ -436,6 +440,7 @@ function DoseTable({
     }
     if (permission !== "granted") {
       setRowNotice({ index: i, type: "blocked" });
+      capture("alarm_permission_blocked", { medication: row.medication, table: tableLabel });
       return;
     }
 
@@ -444,6 +449,7 @@ function DoseTable({
       body: `${MEDICATION_LABELS[row.medication]} ${row.mg}mg at ${row.time} - keep this tab open for it to fire.`,
     });
     setRowNotice({ index: i, type: "confirmed" });
+    capture("alarm_toggled", { enabled: true, medication: row.medication, time: row.time, mg: row.mg, table: tableLabel });
   };
 
   return (
@@ -454,7 +460,10 @@ function DoseTable({
             <div className="flex items-center gap-2">
               <select
                 value={row.medication}
-                onChange={(e) => update(i, "medication", e.target.value)}
+                onChange={(e) => {
+                  capture("dose_medication_changed", { from: row.medication, to: e.target.value, table: tableLabel });
+                  update(i, "medication", e.target.value);
+                }}
                 className="min-w-0 max-w-[11rem] px-1 py-2 text-sm text-gray-600 bg-transparent focus:outline-none"
               >
                 {SELECTABLE_MEDICATIONS.map((id) => (
@@ -482,7 +491,10 @@ function DoseTable({
                 </button>
               )}
               <button
-                onClick={() => onChange(rows.filter((_, idx) => idx !== i))}
+                onClick={() => {
+                  capture("dose_removed", { medication: row.medication, time: row.time, mg: row.mg, table: tableLabel });
+                  onChange(rows.filter((_, idx) => idx !== i));
+                }}
                 className={`w-8 h-8 flex-shrink-0 flex items-center justify-center text-gray-300 hover:text-red-400 transition-colors rounded-lg ${
                   ALARMS_SUPPORTED ? "" : "ml-auto"
                 }`}
@@ -501,7 +513,11 @@ function DoseTable({
             <div className="flex items-center gap-2 mt-1.5">
               <div className="flex items-center flex-shrink-0 border border-gray-200 rounded-lg overflow-hidden">
                 <button
-                  onClick={() => update(i, "time", shiftHour(row.time, -1))}
+                  onClick={() => {
+                    const v = shiftHour(row.time, -1);
+                    capture("dose_time_changed", { medication: row.medication, time: v, table: tableLabel });
+                    update(i, "time", v);
+                  }}
                   className="w-7 h-9 flex items-center justify-center text-gray-400 hover:bg-gray-50 active:bg-gray-100 transition-colors"
                   aria-label="Decrease hour"
                 >
@@ -511,10 +527,17 @@ function DoseTable({
                 </button>
                 <TimeInput
                   value={row.time}
-                  onChange={(v) => update(i, "time", v)}
+                  onChange={(v) => {
+                    if (v !== row.time) capture("dose_time_changed", { medication: row.medication, time: v, table: tableLabel });
+                    update(i, "time", v);
+                  }}
                 />
                 <button
-                  onClick={() => update(i, "time", shiftHour(row.time, 1))}
+                  onClick={() => {
+                    const v = shiftHour(row.time, 1);
+                    capture("dose_time_changed", { medication: row.medication, time: v, table: tableLabel });
+                    update(i, "time", v);
+                  }}
                   className="w-7 h-9 flex items-center justify-center text-gray-400 hover:bg-gray-50 active:bg-gray-100 transition-colors"
                   aria-label="Increase hour"
                 >
@@ -526,7 +549,11 @@ function DoseTable({
               <div className="flex items-center flex-shrink-0 gap-1.5 ml-auto">
                 <div className="flex items-center flex-shrink-0 border border-gray-200 rounded-lg overflow-hidden">
                   <button
-                    onClick={() => update(i, "mg", Math.max(0, row.mg - 5))}
+                    onClick={() => {
+                      const v = Math.max(0, row.mg - 5);
+                      capture("dose_mg_changed", { medication: row.medication, mg: v, table: tableLabel });
+                      update(i, "mg", v);
+                    }}
                     className="w-7 h-9 flex items-center justify-center text-gray-400 hover:bg-gray-50 active:bg-gray-100 transition-colors"
                     aria-label="Decrease dose"
                   >
@@ -540,11 +567,19 @@ function DoseTable({
                     min={0}
                     max={70}
                     step={5}
-                    onChange={(e) => update(i, "mg", parseInt(e.target.value) || 0)}
+                    onChange={(e) => {
+                      const v = parseInt(e.target.value) || 0;
+                      capture("dose_mg_changed", { medication: row.medication, mg: v, table: tableLabel });
+                      update(i, "mg", v);
+                    }}
                     className="w-9 text-sm text-center focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
                   <button
-                    onClick={() => update(i, "mg", Math.min(70, row.mg + 5))}
+                    onClick={() => {
+                      const v = Math.min(70, row.mg + 5);
+                      capture("dose_mg_changed", { medication: row.medication, mg: v, table: tableLabel });
+                      update(i, "mg", v);
+                    }}
                     className="w-7 h-9 flex items-center justify-center text-gray-400 hover:bg-gray-50 active:bg-gray-100 transition-colors"
                     aria-label="Increase dose"
                   >
@@ -567,12 +602,13 @@ function DoseTable({
         ))}
       </div>
       <button
-        onClick={() =>
+        onClick={() => {
+          capture("dose_added", { table: tableLabel });
           onChange([
             ...rows,
             { medication: "elvanse", time: nowHHMM(), mg: 10 },
-          ])
-        }
+          ]);
+        }}
         className="mt-2 w-full border border-dashed border-gray-200 rounded-lg py-2 text-sm text-gray-400 hover:border-gray-300 hover:text-gray-500 transition-colors"
       >
         + Add dose
@@ -739,7 +775,7 @@ export default function App() {
           {(["single", "compare"] as const).map((tab) => (
             <button
               key={tab}
-              onClick={() => setActiveTab(tab)}
+              onClick={() => { capture("tab_changed", { tab }); setActiveTab(tab); }}
               className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
                 activeTab === tab
                   ? "border-gray-900 text-gray-900"
@@ -750,7 +786,7 @@ export default function App() {
             </button>
           ))}
           <button
-            onClick={() => setActiveTab("help")}
+            onClick={() => { capture("tab_changed", { tab: "help" }); setActiveTab("help"); }}
             className={`px-3 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px flex items-center justify-center gap-1.5 ${
               activeTab === "help"
                 ? "border-gray-900 text-gray-900"
@@ -785,7 +821,7 @@ export default function App() {
         </div>
         {activeTab !== "help" && (
           <button
-            onClick={() => setShowSettings((s) => !s)}
+            onClick={() => { const next = !showSettings; capture("settings_panel_toggled", { open: next }); setShowSettings(next); }}
             className={`w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-lg transition-colors ${
               showSettings ? "text-gray-700 bg-gray-100" : "text-gray-300 hover:text-gray-500"
             }`}
@@ -895,6 +931,7 @@ export default function App() {
             <p className="text-xs font-semibold text-gray-600">Settings</p>
             <button
               onClick={() => {
+                capture("settings_reset");
                 setOnsetMinutes(DEFAULT_ONSET_MINUTES);
                 setToleranceLevels({ elvanse: 50, medikinet: 50, concerta: 50 });
                 setEffectStrengths({ elvanse: 50, medikinet: 50, concerta: 50 });
@@ -916,7 +953,11 @@ export default function App() {
                   min={0}
                   max={100}
                   onChange={(updater) =>
-                    setToleranceLevels((levels) => ({ ...levels, [medication]: updater(levels[medication]) }))
+                    setToleranceLevels((levels) => {
+                      const next = { ...levels, [medication]: updater(levels[medication]) };
+                      capture("wearing_off_changed", { medication, value: next[medication] });
+                      return next;
+                    })
                   }
                   icon="wearingOff"
                 />
@@ -928,7 +969,11 @@ export default function App() {
                   min={0}
                   max={100}
                   onChange={(updater) =>
-                    setEffectStrengths((strengths) => ({ ...strengths, [medication]: updater(strengths[medication]) }))
+                    setEffectStrengths((strengths) => {
+                      const next = { ...strengths, [medication]: updater(strengths[medication]) };
+                      capture("effect_strength_changed", { medication, value: next[medication] });
+                      return next;
+                    })
                   }
                   icon="effect"
                 />
@@ -941,7 +986,13 @@ export default function App() {
                     step={5}
                     min={5}
                     max={180}
-                    onChange={setOnsetMinutes}
+                    onChange={(updater) =>
+                      setOnsetMinutes((v) => {
+                        const next = updater(v);
+                        capture("onset_changed", { value: next });
+                        return next;
+                      })
+                    }
                     icon="onset"
                   />
                 )}
@@ -960,10 +1011,10 @@ export default function App() {
           className={`grid gap-6 ${isMobile ? "grid-cols-1" : "grid-cols-2"}`}
         >
           <div>
-            <DoseTable rows={doses1} onChange={setDoses1} />
+            <DoseTable rows={doses1} onChange={setDoses1} tableLabel="schedule_1" />
           </div>
           <div>
-            <DoseTable rows={doses2} onChange={setDoses2} />
+            <DoseTable rows={doses2} onChange={setDoses2} tableLabel="schedule_2" />
           </div>
         </div>
       )}
@@ -1003,7 +1054,7 @@ export default function App() {
             </span>
             <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
               <button
-                onClick={() => setThreshold(t => Math.max(0, t - 5))}
+                onClick={() => setThreshold(t => { const next = Math.max(0, t - 5); capture("threshold_changed", { value: next }); return next; })}
                 className="w-11 h-9 flex items-center justify-center text-green-600 hover:bg-gray-50 active:bg-gray-100 transition-colors"
                 aria-label="Decrease threshold"
               >
@@ -1017,13 +1068,13 @@ export default function App() {
                   value={threshold}
                   min={0}
                   max={200}
-                  onChange={(e) => setThreshold(Math.min(200, Math.max(0, parseInt(e.target.value) || 0)))}
+                  onChange={(e) => { const next = Math.min(200, Math.max(0, parseInt(e.target.value) || 0)); capture("threshold_changed", { value: next }); setThreshold(next); }}
                   className="w-14 text-sm font-medium text-green-600 tabular-nums text-center bg-transparent focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   aria-label="Personal threshold"
                 />
               </div>
               <button
-                onClick={() => setThreshold(t => Math.min(200, t + 5))}
+                onClick={() => setThreshold(t => { const next = Math.min(200, t + 5); capture("threshold_changed", { value: next }); return next; })}
                 className="w-11 h-9 flex items-center justify-center text-green-600 hover:bg-gray-50 active:bg-gray-100 transition-colors"
                 aria-label="Increase threshold"
               >
