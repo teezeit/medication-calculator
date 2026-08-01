@@ -650,6 +650,15 @@ export default function App() {
   const chartRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    const handleUnload = () => {
+      const saved = loadState();
+      if (saved) capture("settings_snapshot", saved);
+    };
+    window.addEventListener("beforeunload", handleUnload);
+    return () => window.removeEventListener("beforeunload", handleUnload);
+  }, []);
+
+  useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 600);
     check();
     window.addEventListener("resize", check);
