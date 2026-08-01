@@ -515,7 +515,7 @@ function DoseTable({
                 <button
                   onClick={() => {
                     const v = shiftHour(row.time, -1);
-                    capture("dose_time_changed", { medication: row.medication, time: v, table: tableLabel });
+                    capture("dose_time_changed", { medication: row.medication, time: v, table: tableLabel, direction: "down" });
                     update(i, "time", v);
                   }}
                   className="w-7 h-9 flex items-center justify-center text-gray-400 hover:bg-gray-50 active:bg-gray-100 transition-colors"
@@ -535,7 +535,7 @@ function DoseTable({
                 <button
                   onClick={() => {
                     const v = shiftHour(row.time, 1);
-                    capture("dose_time_changed", { medication: row.medication, time: v, table: tableLabel });
+                    capture("dose_time_changed", { medication: row.medication, time: v, table: tableLabel, direction: "up" });
                     update(i, "time", v);
                   }}
                   className="w-7 h-9 flex items-center justify-center text-gray-400 hover:bg-gray-50 active:bg-gray-100 transition-colors"
@@ -551,7 +551,7 @@ function DoseTable({
                   <button
                     onClick={() => {
                       const v = Math.max(0, row.mg - 5);
-                      capture("dose_mg_changed", { medication: row.medication, mg: v, table: tableLabel });
+                      capture("dose_mg_changed", { medication: row.medication, mg: v, table: tableLabel, direction: "down" });
                       update(i, "mg", v);
                     }}
                     className="w-7 h-9 flex items-center justify-center text-gray-400 hover:bg-gray-50 active:bg-gray-100 transition-colors"
@@ -577,7 +577,7 @@ function DoseTable({
                   <button
                     onClick={() => {
                       const v = Math.min(70, row.mg + 5);
-                      capture("dose_mg_changed", { medication: row.medication, mg: v, table: tableLabel });
+                      capture("dose_mg_changed", { medication: row.medication, mg: v, table: tableLabel, direction: "up" });
                       update(i, "mg", v);
                     }}
                     className="w-7 h-9 flex items-center justify-center text-gray-400 hover:bg-gray-50 active:bg-gray-100 transition-colors"
@@ -955,7 +955,8 @@ export default function App() {
                   onChange={(updater) =>
                     setToleranceLevels((levels) => {
                       const next = { ...levels, [medication]: updater(levels[medication]) };
-                      capture("wearing_off_changed", { medication, value: next[medication] });
+                      const direction = next[medication] > levels[medication] ? "up" : "down";
+                      capture("wearing_off_changed", { medication, value: next[medication], direction });
                       return next;
                     })
                   }
@@ -971,7 +972,8 @@ export default function App() {
                   onChange={(updater) =>
                     setEffectStrengths((strengths) => {
                       const next = { ...strengths, [medication]: updater(strengths[medication]) };
-                      capture("effect_strength_changed", { medication, value: next[medication] });
+                      const direction = next[medication] > strengths[medication] ? "up" : "down";
+                      capture("effect_strength_changed", { medication, value: next[medication], direction });
                       return next;
                     })
                   }
@@ -989,7 +991,8 @@ export default function App() {
                     onChange={(updater) =>
                       setOnsetMinutes((v) => {
                         const next = updater(v);
-                        capture("onset_changed", { value: next });
+                        const direction = next > v ? "up" : "down";
+                        capture("onset_changed", { value: next, direction });
                         return next;
                       })
                     }
@@ -1054,7 +1057,7 @@ export default function App() {
             </span>
             <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
               <button
-                onClick={() => setThreshold(t => { const next = Math.max(0, t - 5); capture("threshold_changed", { value: next }); return next; })}
+                onClick={() => setThreshold(t => { const next = Math.max(0, t - 5); capture("threshold_changed", { value: next, direction: "down" }); return next; })}
                 className="w-11 h-9 flex items-center justify-center text-green-600 hover:bg-gray-50 active:bg-gray-100 transition-colors"
                 aria-label="Decrease threshold"
               >
@@ -1074,7 +1077,7 @@ export default function App() {
                 />
               </div>
               <button
-                onClick={() => setThreshold(t => { const next = Math.min(200, t + 5); capture("threshold_changed", { value: next }); return next; })}
+                onClick={() => setThreshold(t => { const next = Math.min(200, t + 5); capture("threshold_changed", { value: next, direction: "up" }); return next; })}
                 className="w-11 h-9 flex items-center justify-center text-green-600 hover:bg-gray-50 active:bg-gray-100 transition-colors"
                 aria-label="Increase threshold"
               >
