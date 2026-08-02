@@ -2,3 +2,5 @@ plotly
 pandas
 streamlit
 streamlit-javascript
+posthog
+python-dotenv

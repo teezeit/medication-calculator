@@ -3,6 +3,31 @@ import streamlit as st
 from datetime import time, timedelta
 from fit import calculate_concentrations_and_plot_with_plotly
 from streamlit_javascript import st_javascript
+from posthog_client import posthog_client
+
+
+def capture_event(event, properties):
+    """Capture anonymous calculator interactions when PostHog is configured."""
+    if posthog_client:
+        posthog_client.capture(event=event, properties=properties)
+
+
+def capture_default_schedule_update():
+    capture_event("medication_schedule_updated", {"schedule": "default"})
+
+
+def capture_comparison_schedule_update():
+    capture_event("medication_schedule_updated", {"schedule": "comparison"})
+
+
+def capture_comparison_mode_change():
+    capture_event(
+        "comparison_mode_changed", {"enabled": st.session_state.compare_mode_enabled}
+    )
+
+
+def capture_threshold_update():
+    capture_event("personal_threshold_updated", {})
 
 
 window_width = st_javascript("""window.innerWidth;""")
@@ -70,6 +95,7 @@ with tab1:
         num_rows="dynamic",
         hide_index=True,
         key="default",
+        on_change=capture_default_schedule_update,
     )
 
 with tab2:
@@ -84,14 +110,25 @@ with tab2:
             num_rows="dynamic",
             hide_index=True,
             key="compare_mode",
+            on_change=capture_comparison_schedule_update,
         )
 
     with col2:
         st.markdown("### Option 2")
         edited_df2 = st.data_editor(
-            df2, column_config=column_config, num_rows="dynamic", hide_index=True
+            df2,
+            column_config=column_config,
+            num_rows="dynamic",
+            hide_index=True,
+            key="comparison_option_2",
+            on_change=capture_comparison_schedule_update,
         )
-        compare_mode = st.checkbox("Mode: Compare", value=False)
+        compare_mode = st.checkbox(
+            "Mode: Compare",
+            value=False,
+            key="compare_mode_enabled",
+            on_change=capture_comparison_mode_change,
+        )
 
 with st.expander("Settings", expanded=False):
     # Layout for Medication Selection and Threshold Slider
@@ -107,7 +144,12 @@ with st.expander("Settings", expanded=False):
 
     with col4:
         threshold = st.slider(
-            "Personal Threshold", min_value=0, max_value=200, value=20, step=10
+            "Personal Threshold",
+            min_value=0,
+            max_value=200,
+            value=20,
+            step=10,
+            on_change=capture_threshold_update,
         )
 
 
